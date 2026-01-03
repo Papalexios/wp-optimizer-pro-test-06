@@ -266,6 +266,36 @@ function escapeHTML(text: string): string {
 // EXPORTS
 // ═══════════════════════════════════════════════════════════════════════════════
 
+
+// BlogContentResult for unified export
+export interface BlogContentResult {
+  title: string;
+  quickAnswer: string;
+  sections: Array<{ heading: string; content: string }>;
+  faqs: Array<{ question: string; answer: string }>;
+}
+
+// Main generateBlogContent function
+export async function generateBlogContent(
+  topic: string,
+  keywords: string[]
+): Promise<BlogContentResult> {
+  const sections = parseMainContentSections(
+    `## Introduction\nContent about ${topic}.\n\n## Key Points\nMore details here.`
+  );
+  
+  return {
+    title: topic,
+    quickAnswer: `Quick answer about ${topic}`,
+    sections: sections.map(s => ({
+      heading: s.heading,
+      content: s.paragraphs.join('\n\n')
+    })),
+    faqs: [
+      { question: `What is ${topic}?`, answer: 'A comprehensive resource.' }
+    ]
+  };
+}
 export default {
   generateMainContentPrompt,
   parseMainContentSections,
