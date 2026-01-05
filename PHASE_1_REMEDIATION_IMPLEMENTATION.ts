@@ -38,28 +38,18 @@ export const SEMANTIC_LINK_REPLACEMENTS: InternalLinkTarget[] = [
   {
     url: '/running-plan-to-lose-weight/',
     title: 'Ultimate 2026 Running for Weight Loss Plan: 8-Week Proven Results',
-    context: 'Comprehensive running plan with protocols'
-  },
   {
     url: '/how-frequently-should-a-beginner-exercise-running/',
     title: '11 Essential Running Tips for Beginners in 2026',
-    context: 'Beginner running guidance'
-  },
   {
     url: '/nutrition/high-protein-low-carb-foods/',
     title: '33 High Protein Low Carb Foods for Weight Loss',
-    context: 'Post-run nutrition strategies'
-  },
   {
     url: '/fitness-and-health-calculators/calorie-calculation-tool/',
     title: '2026 Calorie Calculator: Precise Daily Needs Tool',
-    context: 'Calorie tracking and deficit calculation'
-  },
   {
     url: '/weight-loss/jump-start-your-weight-loss-plan/',
     title: 'Jump Start Your Weight Loss Plan',
-    context: 'Quick-start weight loss strategies'
-  }
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════════
