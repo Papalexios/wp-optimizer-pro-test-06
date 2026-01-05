@@ -167,4 +167,55 @@ export function createYouTubeEmbed(videoUrl: string, title: string): string {
 `;
 }
 
-export default { createCTABox, createEnterpriseAccordion, generateEnterpriseSchema, searchYouTubeVideoSerper, createYouTubeEmbed };
+
+// ==========================
+// INTEGRATED YOUTUBE SOLUTION
+// ==========================
+export async function integrateYouTubeVideoIntoContent(
+  htmlContent: string,
+  articleTitle: string,
+  serperApiKey: string | undefined,
+  log?: (msg: string) => void
+): Promise<{ html: string; videoUrl?: string }> {
+  if (!serperApiKey) {
+    log?.(' No Serper API key provided — skipping YouTube integration');
+    return { html: htmlContent };
+  }
+
+  try {
+    log?.('Searching for relevant YouTube video...');
+    const video = await searchYouTubeVideoSerper(
+      articleTitle + ' tutorial guide demonstration',
+      serperApiKey
+    );
+
+    if (!video?.link) {
+      log?.(' No relevant YouTube video found');
+      return { html: htmlContent };
+    }
+
+    log?.(' Found video: ' + (video.title || 'Unknown'));
+    const videoEmbed = createYouTubeEmbed(video.link, 'Relevant Video: ' + articleTitle);
+
+    // Insert video after the first paragraph or before FAQ
+    const faqIndex = htmlContent.toLowerCase().indexOf('frequently asked');
+    const firstParagraphEnd = htmlContent.indexOf('</p>') + 4;
+    const insertPosition = faqIndex > 0 ? faqIndex : firstParagraphEnd;
+
+    const newHtml =
+      htmlContent.slice(0, insertPosition) +
+      '\n' +
+      videoEmbed +
+      '\n' +
+      htmlContent.slice(insertPosition);
+
+    log?.(' YouTube video embedded into content');
+    return { html: newHtml, videoUrl: video.link };
+  } catch (error: any) {
+    log?.(' YouTube integration failed: ' + error.message);
+    return { html: htmlContent };
+  }
+}
+
+270
+{ createCTABox, createEnterpriseAccordion, generateEnterpriseSchema, searchYouTubeVideoSerper, createYouTubeEmbed }; integrateYouTubeVideoIntoContent,
