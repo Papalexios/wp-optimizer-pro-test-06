@@ -218,4 +218,4 @@ export async function integrateYouTubeVideoIntoContent(
 }
 
 export {
- createCTABox, createEnterpriseAccordion, generateEnterpriseSchema, searchYouTubeVideoSerper, createYouTubeEmbed }; integrateYouTubeVideoIntoContent,
+ createCTABox, createEnterpriseAccordion, generateEnterpriseSchema, searchYouTubeVideoSerper, createYouTubeEmbed };
