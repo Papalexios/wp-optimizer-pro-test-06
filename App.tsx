@@ -1930,11 +1930,72 @@ const log = (msg: string, _progressOrForce?: number | boolean) => {
 
             log(`✅ Phase 5 Complete: ${bestWordCount.toLocaleString()} words | Score: ${bestScore}%`, true);
 
-            // ═══════════════════════════════════════════════════════════════
+            // ═══════════════════════════════════════════════════════════════════════════
+            // 🎬 YOUTUBE VIDEO INTEGRATION — NEW PHASE 5.5
+            // ═══════════════════════════════════════════════════════════════════════════
+
+            if (store.apiKeys.serper && finalContract) {
+                store.updateJobState(targetId, { phase: 'youtube_integration' as GodModePhase });
+                log(`🎬 PHASE 5.5: YouTube Video Integration...`, true);
+                
+                try {
+                    const { searchYouTubeVideo, generateYouTubeEmbed } = await import('../utils');
+                    
+                    const videoResult = await searchYouTubeVideo(
+                        topic,
+                        store.apiKeys.serper,
+                        { minViews: 10000 },
+                        (msg) => log(msg)
+                    );
+                    
+                    if (videoResult.video) {
+                        const videoEmbed = generateYouTubeEmbed(videoResult.video, topic);
+                        
+                        // Insert after Quick Answer box OR after first H2 section
+                        const quickAnswerEnd = finalContract.htmlContent.indexOf('</div>', 
+                            finalContract.htmlContent.toLowerCase().indexOf('quick answer')
+                        );
+                        const firstH2 = finalContract.htmlContent.indexOf('<h2');
+                        
+                        let insertPos = -1;
+                        
+                        if (quickAnswerEnd > 0 && quickAnswerEnd < 2000) {
+                            // Insert after Quick Answer closing div
+                            insertPos = quickAnswerEnd + 6; // length of '</div>'
+                            log(`   → Inserting video after Quick Answer box`);
+                        } else if (firstH2 > 0) {
+                            // Insert before first H2
+                            insertPos = firstH2;
+                            log(`   → Inserting video before first H2`);
+                        }
+                        
+                        if (insertPos > 0) {
+                            finalContract.htmlContent = 
+                                finalContract.htmlContent.slice(0, insertPos) + 
+                                '\n\n' + videoEmbed + '\n\n' +
+                                finalContract.htmlContent.slice(insertPos);
+                            
+                            log(`   ✅ Embedded video: "${videoResult.video.title}"`, true);
+                            log(`   📊 Video stats: ${videoResult.video.channel} • ${videoResult.video.views.toLocaleString()} views`);
+                        } else {
+                            log(`   ⚠️ Could not find suitable insertion point for video`);
+                        }
+                    } else {
+                        log(`   ⚠️ No suitable YouTube video found for topic`);
+                    }
+                } catch (ytErr: any) {
+                    log(`   ⚠️ YouTube integration failed: ${ytErr.message}`, true);
+                }
+            } else if (!store.apiKeys.serper) {
+                log(`⚠️ Skipping YouTube integration (no Serper API key)`, true);
+            }
+
+            // ═══════════════════════════════════════════════════════════════════════════
             // PRE-PUBLISH VALIDATION — CRITICAL CHECKS
-            // ═══════════════════════════════════════════════════════════════
+            // ═══════════════════════════════════════════════════════════════════════════
             
             log(`🔍 Running pre-publish validation...`, true);
+
             
             const h1ValidationResult = validateContentNoH1(finalContract.htmlContent);
             if (!h1ValidationResult.valid) {
