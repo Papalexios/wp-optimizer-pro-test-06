@@ -54,8 +54,11 @@ export interface WpConfig {
     authorPageUrl?: string;
     industry?: string;
     targetAudience?: string;
-    defaultCategory?: string | null | undefined;
+    defaultCategory?: string | null;
+    defaultCategoryId?: number | null;
+    defaultAuthorId?: number | null;
 }
+
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // API KEYS
@@ -164,7 +167,9 @@ export type GodModePhase =
     | 'strategic_intel'
     | 'competitor_deep_dive'
     | 'outline_generation'
+    | 'section_drafts'
     | 'running';
+
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // GOD MODE JOB STATE — id is OPTIONAL for store.ts compatibility
@@ -662,14 +667,14 @@ export interface GeneratedSection {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export interface AutonomousConfig {
-    enabled: boolean;
-    maxConcurrent: number;
-    delayBetweenJobs: number;
+    enabled?: boolean;
+    maxConcurrent?: number;
+    delayBetweenJobs?: number;
     delayBetweenPages?: number;
-    autoPublish: boolean;
-    minQualityScore: number;
-    maxRetries: number;
-    skipOnError: boolean;
+    autoPublish?: boolean;
+    minQualityScore?: number;
+    maxRetries?: number;
+    skipOnError?: boolean;
     pauseOnError?: boolean;
     targetScore?: number;
     maxRetriesPerPage?: number;
@@ -680,6 +685,7 @@ export interface AutonomousConfig {
     enableGEO?: boolean;
     enableNLP?: boolean;
 }
+
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // CACHE & LOCKS
