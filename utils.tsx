@@ -22,12 +22,17 @@ import {
     QAValidationResult, 
     SeoMetrics, 
     InternalLinkTarget,
+    InternalLinkInjectionResult,
+    InternalLinkAddedItem,
     NeuronTerm,
     EntityGapAnalysis,
     ExistingContentAnalysis,
     ValidatedReference,
-    FAQ
+    FAQ,
+    HeadingInfo,
+    createDefaultSeoMetrics
 } from './types';
+
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 📌 VERSION & CONSTANTS
@@ -178,18 +183,20 @@ export function calculateSeoMetrics(
     slug: string
 ): SeoMetrics {
     if (!htmlContent) {
-        return {
-            wordCount: 0,
-            readability: 0,
-            contentDepth: 0,
-            headingStructure: 0,
-            aeoScore: 0,
-            geoScore: 0,
-            eeatSignals: 0,
-            internalLinkScore: 0,
-            schemaDetected: false,
-            schemaTypes: []
-        };
+     return {
+    ...createDefaultSeoMetrics(),
+    wordCount,
+    readability,
+    contentDepth: Math.round(contentDepth),
+    headingStructure,
+    aeoScore,
+    geoScore,
+    eeatSignals,
+    internalLinkScore,
+    schemaDetected,
+    schemaTypes: [...new Set(schemaTypes)]
+};
+
     }
     
     const doc = new DOMParser().parseFromString(htmlContent, 'text/html');
@@ -1221,6 +1228,7 @@ function createResult(
     fixSuggestion?: string
 ): QAValidationResult {
     return {
+        ruleId: `${category.toUpperCase()}_${agent}`,
         agent,
         category,
         score,
@@ -1229,6 +1237,7 @@ function createResult(
         status: score >= 70 ? 'passed' : score >= 40 ? 'warning' : 'failed'
     };
 }
+
 
 /**
  * Calculate NLP coverage
@@ -1342,11 +1351,14 @@ export function analyzeExistingContent(html: string): ExistingContentAnalysis {
     const text = doc.body?.textContent || '';
     const wordCount = text.split(/\s+/).filter(Boolean).length;
     
-    // Extract headings
-    const headings: string[] = [];
+    // Extract headings as HeadingInfo[]
+    const headings: HeadingInfo[] = [];
     doc.querySelectorAll('h1, h2, h3, h4').forEach(h => {
-        headings.push(h.textContent?.trim() || '');
-    });
+        headings.push({
+            level: parseInt(h.tagName[1]),
+            text: h.textContent?.trim() || '',
+            id: h.id || undefined
+        });
     
     // Count elements
     const imageCount = doc.querySelectorAll('img').length;
