@@ -749,7 +749,7 @@ function findAnchorText(text: string, target: InternalLinkTarget): string {
     const titleWords = target.title.split(/\s+/);
     const textLower = text.toLowerCase();
     
-    // Try 3-5 word phrases
+    // Strategy 1: Try 3-5 word exact phrases
     for (let len = 5; len >= 3; len--) {
         for (let start = 0; start <= titleWords.length - len; start++) {
             const phrase = titleWords.slice(start, start + len).join(' ');
@@ -759,8 +759,35 @@ function findAnchorText(text: string, target: InternalLinkTarget): string {
         }
     }
     
+    // Strategy 2: Find any 3+ consecutive words that match
+    const textWords = text.toLowerCase().split(/\s+/);
+    for (let i = 0; i < textWords.length - 2; i++) {
+        const threeWords = textWords.slice(i, i + 3).join(' ');
+        // Check if these words relate to the target topic
+        const titleLower = target.title.toLowerCase();
+        const matchCount = textWords.slice(i, i + 3).filter(w => 
+            w.length > 3 && titleLower.includes(w)
+        ).length;
+        
+        if (matchCount >= 2) {
+            // Capitalize first letter of each word
+            return threeWords.replace(/\b\w/g, l => l.toUpperCase());
+        }
+    }
+    
+    // Strategy 3: Use slug-based anchor as fallback
+    if (target.slug && target.slug.length > 10) {
+        const slugWords = target.slug.replace(/-/g, ' ').split(/\s+/);
+        if (slugWords.length >= 3) {
+            return slugWords.slice(0, 4).map(w => 
+                w.charAt(0).toUpperCase() + w.slice(1)
+            ).join(' ');
+        }
+    }
+    
     return '';
 }
+
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 🔍 JSON HEALING
