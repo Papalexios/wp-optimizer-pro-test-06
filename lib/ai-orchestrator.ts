@@ -383,8 +383,9 @@ export function createCalloutBox(text: string, type: 'info' | 'success' | 'warni
 </div>`;
 }
 
+
 // ═══════════════════════════════════════════════════════════════════════════════
-// 🎬 YOUTUBE VIDEO EMBED — THIS WAS MISSING!
+// 🎬 YOUTUBE VIDEO EMBED
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export function createYouTubeEmbed(video: YouTubeVideoData): string {
@@ -422,7 +423,7 @@ export function createYouTubeEmbed(video: YouTubeVideoData): string {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// 📚 REFERENCES SECTION — THIS WAS MISSING!
+// 📚 REFERENCES SECTION
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export function createReferencesSection(references: DiscoveredReference[]): string {
@@ -952,42 +953,76 @@ export function injectInternalLinksDistributed(
 }
 
 function findAnchorText(text: string, target: InternalLinkTarget): string {
-    const titleWords = target.title.split(/\s+/);
-    const textLower = text.toLowerCase();
+    if (!text || !target?.title) return '';
     
-    // Strategy 1: Try 3-5 word exact phrases
+    const textLower = text.toLowerCase();
+    const titleWords = target.title.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+    
+    // Strategy 1: Find exact 3-5 word phrases from title
     for (let len = 5; len >= 3; len--) {
         for (let start = 0; start <= titleWords.length - len; start++) {
             const phrase = titleWords.slice(start, start + len).join(' ');
-            if (textLower.includes(phrase.toLowerCase())) {
-                return phrase;
+            if (textLower.includes(phrase)) {
+                // Return with proper capitalization
+                const idx = textLower.indexOf(phrase);
+                return text.substring(idx, idx + phrase.length);
             }
         }
     }
     
-    // Strategy 2: Find any 3+ consecutive words that match
-    const textWords = text.toLowerCase().split(/\s+/);
-    for (let i = 0; i < textWords.length - 2; i++) {
-        const threeWords = textWords.slice(i, i + 3).join(' ');
-        // Check if these words relate to the target topic
-        const titleLower = target.title.toLowerCase();
-        const matchCount = textWords.slice(i, i + 3).filter(w => 
-            w.length > 3 && titleLower.includes(w)
-        ).length;
-        
-        if (matchCount >= 2) {
-            // Capitalize first letter of each word
-            return threeWords.replace(/\b\w/g, l => l.toUpperCase());
+    // Strategy 2: Find 2-word combinations from title in text
+    for (let i = 0; i < titleWords.length - 1; i++) {
+        const twoWords = titleWords[i] + ' ' + titleWords[i + 1];
+        if (twoWords.length >= 6 && textLower.includes(twoWords)) {
+            const idx = textLower.indexOf(twoWords);
+            return text.substring(idx, idx + twoWords.length);
         }
     }
     
-    // Strategy 3: Use slug-based anchor as fallback
-    if (target.slug && target.slug.length > 10) {
-        const slugWords = target.slug.replace(/-/g, ' ').split(/\s+/);
-        if (slugWords.length >= 3) {
-            return slugWords.slice(0, 4).map(w => 
-                w.charAt(0).toUpperCase() + w.slice(1)
-            ).join(' ');
+    // Strategy 3: Find single important words (nouns/topics) from title
+    const importantWords = titleWords.filter(w => 
+        w.length >= 5 && 
+        !['about', 'these', 'those', 'their', 'there', 'where', 'which', 'while', 'would', 'could', 'should'].includes(w)
+    );
+    
+    for (const word of importantWords) {
+        // Look for the word as part of a phrase in text
+        const wordRegex = new RegExp(`\\b(\\w+\\s+)?${word}(\\s+\\w+)?\\b`, 'gi');
+        const match = text.match(wordRegex);
+        if (match && match[0].length >= 8 && match[0].length <= 50) {
+            return match[0].trim();
+        }
+    }
+    
+    // Strategy 4: Use slug to find anchor
+    if (target.slug && target.slug.length > 5) {
+        const slugWords = target.slug.replace(/-/g, ' ').toLowerCase().split(/\s+/).filter(w => w.length > 2);
+        for (const word of slugWords) {
+            if (word.length >= 5 && textLower.includes(word)) {
+                // Find a phrase containing this word
+                const idx = textLower.indexOf(word);
+                const start = Math.max(0, text.lastIndexOf(' ', idx - 1) + 1);
+                const endSpace = text.indexOf(' ', idx + word.length);
+                const end = endSpace === -1 ? idx + word.length + 15 : Math.min(endSpace + 15, text.length);
+                const phrase = text.substring(start, end).split(' ').slice(0, 4).join(' ');
+                if (phrase.length >= 8) {
+                    return phrase.trim();
+                }
+            }
+        }
+    }
+    
+    // Strategy 5: FALLBACK — Use first 3-4 words of a relevant sentence
+    const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 30);
+    for (const sentence of sentences) {
+        const sentLower = sentence.toLowerCase();
+        // Check if sentence is relevant to the target
+        const relevantWordCount = titleWords.filter(w => sentLower.includes(w)).length;
+        if (relevantWordCount >= 1) {
+            const words = sentence.trim().split(/\s+/).slice(0, 4);
+            if (words.length >= 3) {
+                return words.join(' ');
+            }
         }
     }
     
@@ -1590,12 +1625,14 @@ OUTPUT: HTML only, starting with <h2>Conclusion</h2>.`;
             if (config.internalLinks && config.internalLinks.length > 0) {
                 log(`🔗 Stage 8: Injecting internal links (distributed)...`);
                 
-               const linkResult = injectInternalLinksDistributed(
+const linkResult = injectInternalLinksDistributed(
     assembledContent,
     config.internalLinks,
-    '', // We don't have current URL here, so use empty to not exclude anything
+    '',  // Don't exclude anything — let it add all relevant links
     log
 );
+
+
 
                 
                 assembledContent = linkResult.html;
