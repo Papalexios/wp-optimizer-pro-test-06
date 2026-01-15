@@ -93,7 +93,10 @@ import {
     VALID_GEMINI_MODELS, 
     OPENROUTER_MODELS, 
     generateOptimizedAltText, 
-    upgradeFAQSection 
+    upgradeFAQSection,
+    searchYouTubeVideo, 
+    generateYouTubeEmbed,
+    YouTubeVideoData 
 } from './lib/ai-orchestrator';
 import { getNeuronWriterAnalysis, listNeuronProjects } from './neuronwriter';
 
