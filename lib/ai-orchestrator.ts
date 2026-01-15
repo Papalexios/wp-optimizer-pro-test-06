@@ -959,67 +959,115 @@ function findAnchorText(text: string, target: InternalLinkTarget): string {
     if (!text || !target?.title) return '';
     
     const textLower = text.toLowerCase();
+    const titleLower = target.title.toLowerCase();
     
-    // Stop words to NEVER include in anchors
-    const stopWords = new Set(['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'from', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'must', 'can', 'need', 'about', 'above', 'after', 'again', 'against', 'all', 'am', 'any', 'because', 'before', 'below', 'between', 'both', 'during', 'each', 'few', 'here', 'how', 'into', 'its', 'just', 'more', 'most', 'no', 'nor', 'not', 'now', 'off', 'once', 'only', 'other', 'our', 'out', 'over', 'own', 'same', 'so', 'some', 'such', 'than', 'that', 'their', 'them', 'then', 'there', 'these', 'they', 'this', 'those', 'through', 'too', 'under', 'until', 'up', 'very', 'what', 'when', 'where', 'which', 'while', 'who', 'why', 'your', 'best', 'top', 'guide', 'complete', 'ultimate', 'how']);
+    // Stop words to NEVER use as standalone anchors
+    const stopWords = new Set(['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'from', 'is', 'are', 'was', 'were', 'be', 'been', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'must', 'can', 'need', 'about', 'after', 'again', 'all', 'any', 'because', 'before', 'between', 'both', 'during', 'each', 'few', 'here', 'how', 'into', 'its', 'just', 'more', 'most', 'no', 'nor', 'not', 'now', 'off', 'once', 'only', 'other', 'our', 'out', 'over', 'own', 'same', 'so', 'some', 'such', 'than', 'that', 'their', 'them', 'then', 'there', 'these', 'they', 'this', 'those', 'through', 'too', 'under', 'until', 'up', 'very', 'what', 'when', 'where', 'which', 'while', 'who', 'why', 'your', 'best', 'top', 'guide', 'complete', 'ultimate', 'how', 'way', 'ways', 'tips', 'step', 'steps', 'make', 'get', 'use', 'using']);
     
-    // Extract meaningful keywords from title
-    const titleWords = target.title.toLowerCase().split(/\s+/).filter(w => w.length > 2 && !stopWords.has(w));
+    // Extract meaningful keywords from title (3+ chars, not stop words)
+    const titleWords = titleLower
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .split(/\s+/)
+        .filter(w => w.length >= 3 && !stopWords.has(w));
     
     if (titleWords.length === 0) return '';
     
-    // STRATEGY 1: Find exact 2-4 word phrase from title (BEST)
+    // STRATEGY 1: Find exact 2-4 word phrase from title (BEST MATCH)
     for (let len = Math.min(4, titleWords.length); len >= 2; len--) {
         for (let start = 0; start <= titleWords.length - len; start++) {
             const phrase = titleWords.slice(start, start + len).join(' ');
-            if (phrase.length >= 6 && phrase.length <= 35 && textLower.includes(phrase)) {
+            if (phrase.length >= 5 && phrase.length <= 40 && textLower.includes(phrase)) {
                 const idx = textLower.indexOf(phrase);
                 return text.substring(idx, idx + phrase.length);
             }
         }
     }
     
-    // STRATEGY 2: Find single important keyword (5+ chars)
+    // STRATEGY 2: Find single important word (5+ chars) with one adjacent word
     const importantWords = titleWords.filter(w => w.length >= 5);
     
     for (const word of importantWords) {
-        if (!textLower.includes(word)) continue;
+        const wordIdx = textLower.indexOf(word);
+        if (wordIdx === -1) continue;
         
-        const idx = textLower.indexOf(word);
-        const actualWord = text.substring(idx, idx + word.length);
+        const actualWord = text.substring(wordIdx, wordIdx + word.length);
         
-        // Get one word after
-        const afterText = text.substring(idx + word.length, Math.min(text.length, idx + word.length + 25));
-        const wordAfter = afterText.trim().split(/\s+/)[0]?.replace(/[^a-zA-Z]/g, '');
-        
-        if (wordAfter && wordAfter.length >= 3 && wordAfter.length <= 12 && !stopWords.has(wordAfter.toLowerCase())) {
-            const anchor = `${actualWord} ${wordAfter}`;
-            if (anchor.length >= 8 && anchor.length <= 30) {
+        // Try word + next word
+        const afterText = text.substring(wordIdx + word.length, wordIdx + word.length + 30);
+        const afterMatch = afterText.match(/^\s*([a-zA-Z]{3,15})/);
+        if (afterMatch && !stopWords.has(afterMatch[1].toLowerCase())) {
+            const anchor = `${actualWord} ${afterMatch[1]}`;
+            if (anchor.length >= 8 && anchor.length <= 35) {
                 return anchor;
             }
         }
         
-        // Just the word if it's long enough
+        // Try previous word + word
+        const beforeText = text.substring(Math.max(0, wordIdx - 30), wordIdx);
+        const beforeMatch = beforeText.match(/([a-zA-Z]{3,15})\s*$/);
+        if (beforeMatch && !stopWords.has(beforeMatch[1].toLowerCase())) {
+            const anchor = `${beforeMatch[1]} ${actualWord}`;
+            if (anchor.length >= 8 && anchor.length <= 35) {
+                return anchor;
+            }
+        }
+        
+        // Use single word if it's long enough (7+ chars)
         if (word.length >= 7) {
             return actualWord;
         }
     }
     
-    // STRATEGY 3: Use slug words
-    if (target.slug && target.slug.length > 5) {
-        const slugWords = target.slug.replace(/-/g, ' ').split(/\s+/).filter(w => w.length >= 5 && !stopWords.has(w));
+    // STRATEGY 3: Find ANY title word (4+ chars) in text
+    for (const word of titleWords) {
+        if (word.length < 4) continue;
+        
+        const wordIdx = textLower.indexOf(word);
+        if (wordIdx === -1) continue;
+        
+        const actualWord = text.substring(wordIdx, wordIdx + word.length);
+        
+        // Get adjacent word to make 2-word anchor
+        const afterText = text.substring(wordIdx + word.length, wordIdx + word.length + 25);
+        const afterMatch = afterText.match(/^\s*([a-zA-Z]{3,12})/);
+        if (afterMatch && !stopWords.has(afterMatch[1].toLowerCase())) {
+            return `${actualWord} ${afterMatch[1]}`;
+        }
+        
+        // If word is 6+ chars, use it alone
+        if (word.length >= 6) {
+            return actualWord;
+        }
+    }
+    
+    // STRATEGY 4: Use slug-derived words
+    if (target.slug) {
+        const slugWords = target.slug
+            .replace(/-/g, ' ')
+            .split(/\s+/)
+            .filter(w => w.length >= 4 && !stopWords.has(w));
         
         for (const word of slugWords) {
-            if (textLower.includes(word)) {
-                const idx = textLower.indexOf(word);
-                return text.substring(idx, idx + word.length);
+            const wordIdx = textLower.indexOf(word);
+            if (wordIdx !== -1) {
+                const actualWord = text.substring(wordIdx, wordIdx + word.length);
+                if (word.length >= 6) {
+                    return actualWord;
+                }
+                // Try to get adjacent word
+                const afterText = text.substring(wordIdx + word.length, wordIdx + word.length + 20);
+                const afterMatch = afterText.match(/^\s*([a-zA-Z]{3,10})/);
+                if (afterMatch) {
+                    return `${actualWord} ${afterMatch[1]}`;
+                }
             }
         }
     }
     
-    // NO FALLBACK — Return empty if no good match
+    // NO FALLBACK — Return empty to prevent bad/irrelevant anchors
     return '';
 }
+
 
 
 
