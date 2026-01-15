@@ -58,6 +58,16 @@ export function createDefaultSeoMetrics(): SeoMetrics {
     };
 }
 
+// At the top of utils.tsx, add the import
+export {
+    searchYouTubeVideo,
+    generateYouTubeEmbed,
+    generateCompactYouTubeEmbed,
+    YouTubeVideoData,
+    YouTubeSearchResult,
+    YouTubeSearchOptions
+} from './lib/youtube-service';
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // 📏 TEXT UTILITIES
 // ═══════════════════════════════════════════════════════════════════════════════
