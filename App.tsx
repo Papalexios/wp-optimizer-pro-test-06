@@ -1177,16 +1177,16 @@ const auth = getAuth();
 
             const actualModel = getActualModel();
             
-            log(`🚀 ═══════════════════════════════════════════════════════════`);
+log(`🚀 ═══════════════════════════════════════════════════════════`);
 log(`🚀 GOD MODE: "${topic.substring(0, 50)}..."`);
 log(`🚀 Provider: ${store.selectedProvider} | Model: ${actualModel}`);
 log(`🚀 ═══════════════════════════════════════════════════════════`);
 
-// ✅ ADD THESE DEBUG LINES:
 log(`🔧 API Keys Status:`);
 log(`   → Primary AI: ${store.apiKeys[store.selectedProvider] ? '✅ SET' : '❌ MISSING'}`);
 log(`   → Serper: ${store.apiKeys.serper ? '✅ SET (' + store.apiKeys.serper.length + ' chars)' : '❌ MISSING — YouTube & References DISABLED'}`);
-log(`   → Internal Links: ${internalLinks.length} targets available`);
+// No internalLinks log here - it's not declared yet!
+
 
 
             // ═══════════════════════════════════════════════════════════════
