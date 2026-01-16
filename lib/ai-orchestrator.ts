@@ -1908,7 +1908,29 @@ async generateSingleShot(config: GenerateConfig, log: LogFunction): Promise<Gene
     })() : Promise.resolve(null);
 
     // ✅ References Promise (ADD THIS - IT WAS COMPLETELY MISSING!)
-    
+        // ✅ References Promise
+    const referencesPromise = config.apiKeys?.serper ? (async () => {
+        try {
+            if (config.validatedReferences && config.validatedReferences.length >= 5) {
+                references = config.validatedReferences.map(ref => ({
+                    url: ref.url,
+                    title: ref.title,
+                    source: ref.source || extractSourceName(ref.url),
+                    snippet: ref.snippet,
+                    year: ref.year,
+                    authorityScore: ref.isAuthority ? 90 : 70,
+                    favicon: `https://www.google.com/s2/favicons?domain=${extractDomain(ref.url)}&sz=32`
+                }));
+                log(`   ✅ Using ${references.length} pre-validated references`);
+            } else {
+                references = await discoverReferences(config.topic, config.apiKeys.serper, { targetCount: 10, minAuthorityScore: 60 }, log);
+                log(`   ✅ Discovered ${references.length} references`);
+            }
+        } catch (e: any) {
+            log(`   ❌ References discovery ERROR: ${e.message}`);
+            references = [];
+        }
+    })() : Promise.resolve();
         
         // ═══════════════════════════════════════════════════════════════
         // STEP 2: HUMAN-STYLE CONTENT GENERATION
@@ -2014,7 +2036,7 @@ OUTPUT FORMAT (VALID JSON ONLY):
                     
                     // Wait for parallel tasks
                     log(`   ⏳ Waiting for YouTube & References...`);
-                    await Promise.all([youtubePromise, referencesPromise]);
+                    await youtubePromise;
                     
                     // ═══════════════════════════════════════════════════════════
                     // STEP 3: ASSEMBLE WITH 12+ VISUAL COMPONENTS
