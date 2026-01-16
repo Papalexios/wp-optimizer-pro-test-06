@@ -1874,40 +1874,6 @@ OUTPUT: HTML only, starting with <h2>Conclusion</h2>.`;
         }
     }
     
-    async generateSingleShot(config: GenerateConfig, log: LogFunction): Promise<GenerationResult> {
-        const startTime = Date.now();
-        log(`🎨 SINGLE-SHOT GENERATION (FULL ENTERPRISE MODE)`);
-        
-        let youtubeVideo: YouTubeVideoData | null = null;
-        let references: DiscoveredReference[] = [];
-        
-      
-// ═══════════════════════════════════════════════════════════════
-// STEP 1: PARALLEL — YouTube + References (FIXED - NO TDZ)
-// ═══════════════════════════════════════════════════════════════
-
-log(`   🔍 Starting parallel discovery...`);
-
-// ✅ YouTube Promise
-const youtubePromise = config.apiKeys?.serper ? (async () => {
-    try {
-        const video = await searchYouTubeVideo(config.topic, config.apiKeys.serper, log);
-        if (video && video.videoId) {
-            youtubeVideo = video;
-            log(`   ✅ YouTube FOUND: "${video.title?.substring(0, 40)}..." (${video.views?.toLocaleString() || 0} views)`);
-        } else {
-            log(`   ⚠️ YouTube search returned no valid video`);
-            youtubeVideo = null;
-        }
-        return video;
-    } catch (e: any) {
-        log(`   ❌ YouTube search ERROR: ${e.message}`);
-        youtubeVideo = null;
-        return null;
-    }
-})() : Promise.resolve(null);
-
-// ✅ ADD THIS — References Promise (WAS MISSING!)
 const referencesPromise = config.apiKeys?.serper ? (async () => {
     try {
         if (config.validatedReferences && config.validatedReferences.length >= 5) {
@@ -1930,7 +1896,44 @@ const referencesPromise = config.apiKeys?.serper ? (async () => {
         references = [];
     }
 })() : Promise.resolve();
+Full Context — What Your Code Should Look Like
+typescript
 
+
+async generateSingleShot(config: GenerateConfig, log: LogFunction): Promise<GenerationResult> {
+    const startTime = Date.now();
+    log(`🎨 SINGLE-SHOT GENERATION (FULL ENTERPRISE MODE)`);
+    
+    let youtubeVideo: YouTubeVideoData | null = null;
+    let references: DiscoveredReference[] = [];
+    
+    // ═══════════════════════════════════════════════════════════════
+    // STEP 1: PARALLEL — YouTube + References (FIXED - NO TDZ)
+    // ═══════════════════════════════════════════════════════════════
+
+    log(`   🔍 Starting parallel discovery...`);
+
+    // ✅ YouTube Promise
+    const youtubePromise = config.apiKeys?.serper ? (async () => {
+        try {
+            const video = await searchYouTubeVideo(config.topic, config.apiKeys.serper, log);
+            if (video && video.videoId) {
+                youtubeVideo = video;
+                log(`   ✅ YouTube FOUND: "${video.title?.substring(0, 40)}..." (${video.views?.toLocaleString() || 0} views)`);
+            } else {
+                log(`   ⚠️ YouTube search returned no valid video`);
+                youtubeVideo = null;
+            }
+            return video;
+        } catch (e: any) {
+            log(`   ❌ YouTube search ERROR: ${e.message}`);
+            youtubeVideo = null;
+            return null;
+        }
+    })() : Promise.resolve(null);
+
+    // ✅ References Promise (ADD THIS - IT WAS COMPLETELY MISSING!)
+    
         
         // ═══════════════════════════════════════════════════════════════
         // STEP 2: HUMAN-STYLE CONTENT GENERATION
