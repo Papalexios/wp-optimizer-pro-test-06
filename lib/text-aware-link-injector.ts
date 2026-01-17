@@ -1,171 +1,264 @@
-import { generateBlogContent, BlogContentResult } from './blog-content-generator';
-import { injectContextualLinks, validateLinkQuality } from './context-aware-link-injector';
+// ═══════════════════════════════════════════════════════════════════════════════
+// WP OPTIMIZER PRO v39.0 — TEXT-AWARE LINK INJECTOR
+// ═══════════════════════════════════════════════════════════════════════════════
 
-interface EnhancedBlogContent {
-  title: string;
-  quickAnswer: string;
-  mainContent: string;
-  contentSections: Array<{
-    heading: string;
-    content: string;
-  }>;
-  faqs: Array<{
-    question: string;
-    answer: string;
-  }>;
-  metadata: {
-    wordsCount: number;
-    sectionsCount: number;
-    internalLinksCount: number;
-    linkQualityScore: number;
-    averageRelevance: number;
-  };
+import { InternalLinkTarget, InternalLinkResult } from '../types';
+
+export const TEXT_AWARE_INJECTOR_VERSION = "39.0.0";
+
+type LogFunction = (msg: string) => void;
+
+const STOP_WORDS = new Set([
+    'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of',
+    'with', 'by', 'from', 'is', 'are', 'was', 'were', 'be', 'been', 'have',
+    'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should',
+    'this', 'that', 'these', 'those', 'it', 'its', 'your', 'you', 'we', 'they',
+    'here', 'there', 'when', 'where', 'what', 'which', 'who', 'how', 'why'
+]);
+
+const BAD_ANCHORS = [
+    'click here', 'read more', 'learn more', 'check out', 'find out',
+    'this article', 'this post', 'this guide', 'click this', 'see here'
+];
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 🔧 UTILITY FUNCTIONS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function escapeHtml(str: string): string {
+    if (!str) return '';
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-export async function generateEnhancedBlogContent(
-  topic: string,
-  keywords: string[]
-): Promise<EnhancedBlogContent> {
-  try {
-    // Step 1: Generate core blog content with 8-12 sections
-    const blogResult: BlogContentResult = await generateBlogContent(topic, keywords);
+function countWords(text: string): number {
+    if (!text) return 0;
+    return text.replace(/<[^>]*>/g, ' ').split(/\s+/).filter(w => w.length > 0).length;
+}
 
-    // Step 2: Combine all content sections
-    let fullContent = `${blogResult.quickAnswer}\n\n`;
-    
-    blogResult.sections.forEach((section: { heading: string; content: string }) => {      fullContent += `## ${section.heading}\n${section.content}\n\n`;
-          fullContent += `## ${section.heading}\n${section.content}\n\n`;});
+function extractKeywords(title: string): string[] {
+    return title
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .split(/\s+/)
+        .filter(w => w.length >= 4 && !STOP_WORDS.has(w));
+}
 
-    // Step 3: Inject 15-20 contextual links
-    const linkResult = await injectContextualLinks(fullContent, topic);
+// ═══════════════════════════════════════════════════════════════════════════════
+// 🔍 FIND CONTEXTUAL ANCHOR TEXT
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function findContextualAnchor(
+    paragraphText: string,
+    target: InternalLinkTarget,
+    log: LogFunction
+): string {
+    if (!paragraphText || !target?.title) return '';
     
-    // Step 4: Validate link quality
-    const qualityValid = validateLinkQuality(linkResult.links);
+    const textLower = paragraphText.toLowerCase();
+    const keywords = extractKeywords(target.title);
     
-    if (!qualityValid && linkResult.links.length < 15) {
-      console.warn('Warning: Link quality below threshold. Consider enhancing keywords.');
+    if (keywords.length === 0) return '';
+    
+    // Split into sentences
+    const sentences = paragraphText.split(/[.!?]+/).filter(s => s.trim().length > 30);
+    
+    for (const keyword of keywords) {
+        for (const sentence of sentences) {
+            const sentLower = sentence.toLowerCase();
+            const kwIdx = sentLower.indexOf(keyword);
+            
+            if (kwIdx === -1) continue;
+            
+            const words = sentence.trim().split(/\s+/);
+            const wordsLower = sentLower.trim().split(/\s+/);
+            
+            // Find word containing keyword
+            let kwWordIdx = -1;
+            for (let i = 0; i < wordsLower.length; i++) {
+                if (wordsLower[i].includes(keyword)) {
+                    kwWordIdx = i;
+                    break;
+                }
+            }
+            
+            if (kwWordIdx === -1) continue;
+            
+            // Extract 3-6 word phrase around keyword
+            for (let len = 6; len >= 3; len--) {
+                for (let offset = 0; offset < len; offset++) {
+                    const start = Math.max(0, kwWordIdx - offset);
+                    const end = Math.min(words.length, start + len);
+                    
+                    if (end - start < 3) continue;
+                    
+                    let phrase = words.slice(start, end).join(' ')
+                        .replace(/^[^a-zA-Z0-9]+/, '')
+                        .replace(/[^a-zA-Z0-9]+$/, '')
+                        .trim();
+                    
+                    if (phrase.length < 15 || phrase.length > 60) continue;
+                    
+                    const wordCount = phrase.split(/\s+/).length;
+                    if (wordCount < 3 || wordCount > 7) continue;
+                    
+                    const firstWord = phrase.split(/\s+/)[0].toLowerCase();
+                    const lastWord = phrase.split(/\s+/).pop()?.toLowerCase() || '';
+                    
+                    if (STOP_WORDS.has(firstWord) || STOP_WORDS.has(lastWord)) continue;
+                    
+                    const phraseLower = phrase.toLowerCase();
+                    if (BAD_ANCHORS.some(b => phraseLower.includes(b))) continue;
+                    
+                    // Find exact match in original text
+                    const exactIdx = paragraphText.toLowerCase().indexOf(phrase.toLowerCase());
+                    if (exactIdx >= 0) {
+                        const exactPhrase = paragraphText.substring(exactIdx, exactIdx + phrase.length);
+                        return exactPhrase;
+                    }
+                }
+            }
+        }
     }
+    
+    return '';
+}
 
-    // Step 5: Calculate average relevance
-    const avgRelevance = linkResult.links.length > 0
-      ? linkResult.links.reduce((sum, l) => sum + l.relevanceScore, 0) / linkResult.links.length
-      : 0;
+// ═══════════════════════════════════════════════════════════════════════════════
+// 🔗 MAIN INJECTION FUNCTION
+// ═══════════════════════════════════════════════════════════════════════════════
 
-    // Step 6: Return enhanced content with metadata
+export function injectLinksIntoContent(
+    html: string,
+    linkTargets: InternalLinkTarget[],
+    currentUrl: string,
+    log: LogFunction,
+    options: {
+        maxTotal?: number;
+        maxPerSection?: number;
+        minWordsBetween?: number;
+    } = {}
+): { html: string; linksAdded: InternalLinkResult[]; totalLinks: number } {
+    const {
+        maxTotal = 15,
+        maxPerSection = 2,
+        minWordsBetween = 120
+    } = options;
+    
+    log(`🔗 TEXT-AWARE LINK INJECTOR v${TEXT_AWARE_INJECTOR_VERSION}`);
+    
+    if (!html || !linkTargets || linkTargets.length === 0) {
+        return { html: html || '', linksAdded: [], totalLinks: 0 };
+    }
+    
+    const linksAdded: InternalLinkResult[] = [];
+    
+    const validTargets = linkTargets.filter(t => 
+        t?.url && t?.title && t.title.length >= 10 && (!currentUrl || t.url !== currentUrl)
+    ).slice(0, 30);
+    
+    if (validTargets.length === 0) {
+        return { html, linksAdded: [], totalLinks: 0 };
+    }
+    
+    // Split by H2 sections
+    const parts = html.split(/(<h2[^>]*>)/gi);
+    
+    let totalLinksAdded = 0;
+    let targetIdx = 0;
+    let lastLinkWordPos = 0;
+    let currentWordPos = 0;
+    
+    const processed = parts.map((part, partIdx) => {
+        if (part.match(/<h2/i) || partIdx === 0) {
+            currentWordPos += countWords(part);
+            return part;
+        }
+        
+        if (totalLinksAdded >= maxTotal) {
+            currentWordPos += countWords(part);
+            return part;
+        }
+        
+        let sectionLinks = 0;
+        let processedPart = part;
+        
+        // Find paragraphs
+        const paraRegex = /<p[^>]*>([\s\S]{60,}?)<\/p>/gi;
+        let match;
+        const paras: Array<{ full: string; plain: string; pos: number }> = [];
+        
+        while ((match = paraRegex.exec(part)) !== null) {
+            const plain = match[1].replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+            if (plain.length >= 60) {
+                paras.push({ full: match[0], plain, pos: match.index });
+            }
+        }
+        
+        for (const para of paras) {
+            if (sectionLinks >= maxPerSection || totalLinksAdded >= maxTotal) break;
+            
+            const paraWordPos = currentWordPos + countWords(part.substring(0, para.pos));
+            
+            if (paraWordPos - lastLinkWordPos < minWordsBetween && linksAdded.length > 0) {
+                continue;
+            }
+            
+            // Try targets
+            let inserted = false;
+            for (let t = targetIdx; t < Math.min(targetIdx + 5, validTargets.length) && !inserted; t++) {
+                const target = validTargets[t];
+                
+                if (linksAdded.some(l => l.url === target.url)) continue;
+                
+                const anchor = findContextualAnchor(para.plain, target, log);
+                
+                if (!anchor || anchor.length < 15) continue;
+                
+                const link = `<a href="${escapeHtml(target.url)}" title="${escapeHtml(target.title)}" style="color: #6366f1 !important; font-weight: 600 !important; text-decoration: underline !important;">${anchor}</a>`;
+                
+                const escaped = anchor.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const regex = new RegExp(`(?<!<[^>]*)\\b${escaped}\\b(?![^<]*>)`, 'i');
+                
+                if (!para.full.match(regex) || para.full.includes(`>${anchor}</a>`)) continue;
+                
+                const newPara = para.full.replace(regex, link);
+                
+                if (newPara !== para.full) {
+                    processedPart = processedPart.replace(para.full, newPara);
+                    
+                    linksAdded.push({
+                        url: target.url,
+                        anchorText: anchor,
+                        relevanceScore: 0.9,
+                        position: paraWordPos
+                    });
+                    
+                    sectionLinks++;
+                    totalLinksAdded++;
+                    lastLinkWordPos = paraWordPos;
+                    inserted = true;
+                    
+                    log(`   ✅ Link: "${anchor}" → ${target.url.substring(0, 50)}...`);
+                }
+            }
+            
+            targetIdx++;
+        }
+        
+        currentWordPos += countWords(part);
+        return processedPart;
+    });
+    
+    log(`   🔗 Total: ${totalLinksAdded} links`);
+    
     return {
-      title: blogResult.title,
-      quickAnswer: blogResult.quickAnswer,
-      mainContent: linkResult.content,
-      contentSections: blogResult.sections,
-      faqs: blogResult.faqs,
-      metadata: {
-        wordsCount: linkResult.content.split(/\s+/).length,
-        sectionsCount: blogResult.sections.length,
-        internalLinksCount: linkResult.linksInjected,
-        linkQualityScore: qualityValid ? 1 : 0.7,
-        averageRelevance: parseFloat(avgRelevance.toFixed(2))
-      }
+        html: processed.join(''),
+        linksAdded,
+        totalLinks: totalLinksAdded
     };
-  } catch (error) {
-    console.error('Error generating enhanced blog content:', error);
-    throw error;
-  }
 }
 
-export function renderBlogHTML(content: EnhancedBlogContent): string {
-  const { title, quickAnswer, contentSections, faqs, metadata } = content;
-  
-  let html = `<article class="blog-post">\n`;
-  html += `  <h1>${title}</h1>\n\n`;
-  
-  // Quick Answer Section
-  html += `  <section class="quick-answer">\n`;
-  html += `    <h2>Quick Answer</h2>\n`;
-  html += `    <p>${quickAnswer}</p>\n`;
-  html += `  </section>\n\n`;
-  
-  // Main Content Sections (8-12 H2 sections)
-  html += `  <section class="main-content">\n`;
-  contentSections.forEach(section => {
-    html += `    <section class="content-section">\n`;
-    html += `      <h2>${section.heading}</h2>\n`;
-    html += `      <div class="section-body">${section.content}</div>\n`;
-    html += `    </section>\n\n`;
-  });
-  html += `  </section>\n\n`;
-  
-  // FAQs Section
-  html += `  <section class="faqs">\n`;
-  html += `    <h2>Frequently Asked Questions</h2>\n`;
-  faqs.forEach((faq, index) => {
-    html += `    <div class="faq-item" id="faq-${index}">\n`;
-    html += `      <h3>${faq.question}</h3>\n`;
-    html += `      <p>${faq.answer}</p>\n`;
-    html += `    </div>\n`;
-  });
-  html += `  </section>\n\n`;
-  
-  // Metadata Footer
-  html += `  <footer class="post-metadata">\n`;
-  html += `    <p class="word-count">Word Count: ${metadata.wordsCount}</p>\n`;
-  html += `    <p class="sections-count">Sections: ${metadata.sectionsCount}</p>\n`;
-  html += `    <p class="links-count">Internal Links: ${metadata.internalLinksCount}/20</p>\n`;
-  html += `    <p class="link-quality">Link Quality Score: ${(metadata.linkQualityScore * 100).toFixed(1)}%</p>\n`;
-  html += `    <p class="relevance">Average Link Relevance: ${(metadata.averageRelevance * 100).toFixed(1)}%</p>\n`;
-  html += `  </footer>\n\n`;
-  html += `</article>`;
-  
-  return html;
-}
-
-export function validateBlogContent(content: EnhancedBlogContent): {
-  isValid: boolean;
-  errors: string[];
-  warnings: string[];
-} {
-  const errors: string[] = [];
-  const warnings: string[] = [];
-  
-  // Validation checks
-  if (!content.title || content.title.length === 0) {
-    errors.push('Title is required and cannot be empty');
-  }
-  
-  if (!content.quickAnswer || content.quickAnswer.length < 50) {
-    errors.push('Quick answer must be at least 50 characters');
-  }
-  
-  if (content.contentSections.length < 8) {
-    warnings.push(`Only ${content.contentSections.length} sections found. Recommended: 8-12`);
-  }
-  
-  if (content.contentSections.length > 12) {
-    warnings.push(`${content.contentSections.length} sections found. Maximum recommended: 12`);
-  }
-  
-  if (content.metadata.internalLinksCount < 15) {
-    warnings.push(`Only ${content.metadata.internalLinksCount} internal links. Recommended: 15-20`);
-  }
-  
-  if (content.metadata.internalLinksCount > 20) {
-    warnings.push(`${content.metadata.internalLinksCount} internal links. Maximum recommended: 20`);
-  }
-  
-  if (content.metadata.averageRelevance < 0.85) {
-    warnings.push(`Average link relevance ${(content.metadata.averageRelevance * 100).toFixed(1)}%. Target: 85%+`);
-  }
-  
-  if (content.metadata.wordsCount < 1500) {
-    warnings.push(`${content.metadata.wordsCount} words. Recommended: 1500+ for SEO`);
-  }
-  
-  if (content.faqs.length === 0) {
-    warnings.push('No FAQ sections found. Consider adding FAQs for better engagement');
-  }
-  
-  return {
-    isValid: errors.length === 0,
-    errors,
-    warnings
-  };
-}
+export default {
+    TEXT_AWARE_INJECTOR_VERSION,
+    injectLinksIntoContent
+};
