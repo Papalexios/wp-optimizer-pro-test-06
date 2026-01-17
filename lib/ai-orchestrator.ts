@@ -1925,4 +1925,608 @@ OUTPUT: HTML only, starting with <h2>Conclusion</h2>.`;
             if (config.internalLinks && config.internalLinks.length > 0) {
                 log(`🔗 Stage 8: Injecting internal links...`);
                 
-                const linkResult = injectInternalLinksDistrib
+                                const linkResult = injectInternalLinksDistributed(
+                    assembledContent,
+                    config.internalLinks,
+                    '',
+                    log
+                );
+                
+                assembledContent = linkResult.html;
+                log(`   ✅ ${linkResult.totalLinks} internal links injected`);
+            }
+            
+            // ═══════════════════════════════════════════════════════════════
+            // STAGE 9: VALIDATION & FINAL CONTRACT
+            // ═══════════════════════════════════════════════════════════════
+            
+            onStageProgress?.({ stage: 'validation', progress: 95, message: 'Validating content...' });
+            log(`✅ Stage 9: Validating final content...`);
+            
+            const finalWordCount = countWords(assembledContent);
+            log(`   📊 Final word count: ${finalWordCount}`);
+            
+            const finalContract: ContentContract = {
+                title: outline.title,
+                metaDescription: outline.metaDescription,
+                slug: outline.slug,
+                htmlContent: assembledContent,
+                excerpt: `Complete guide to ${config.topic}. Learn proven strategies, expert tips, and actionable steps.`,
+                faqs: faqs,
+                wordCount: finalWordCount
+            };
+            
+            onStageProgress?.({ stage: 'validation', progress: 100, message: 'Complete!' });
+            
+            const totalTime = Date.now() - startTime;
+            log(`🎉 STAGED GENERATION COMPLETE`);
+            log(`   → ${finalWordCount} words`);
+            log(`   → ${sections.length} sections`);
+            log(`   → ${faqs.length} FAQs`);
+            log(`   → ${references.length} references`);
+            log(`   → ${youtubeVideo ? '1 video' : 'No video'}`);
+            log(`   → Total time: ${(totalTime / 1000).toFixed(1)}s`);
+            
+            return {
+                contract: finalContract,
+                generationMethod: 'staged',
+                attempts: 1,
+                totalTime,
+                youtubeVideo: youtubeVideo || undefined,
+                references
+            };
+            
+        } catch (error: any) {
+            log(`❌ Staged generation failed: ${error.message}`);
+            log(`   → Falling back to single-shot generation...`);
+            return this.generateSingleShot(config, log);
+        }
+    }
+    
+    // ═══════════════════════════════════════════════════════════════════════════
+    // 🎯 generateSingleShot() — SINGLE-SHOT GENERATION (FALLBACK)
+    // ═══════════════════════════════════════════════════════════════════════════
+    
+    async generateSingleShot(config: GenerateConfig, log: LogFunction): Promise<GenerationResult> {
+        const startTime = Date.now();
+        log(`🎨 SINGLE-SHOT GENERATION v${AI_ORCHESTRATOR_VERSION}`);
+        log(`   → Topic: "${config.topic.substring(0, 50)}..."`);
+        log(`   → Provider: ${config.provider} | Model: ${config.model}`);
+        
+        // Initialize parallel task results BEFORE promises
+        let youtubeVideo: YouTubeVideoData | null = null;
+        let references: DiscoveredReference[] = [];
+        
+        // ═══════════════════════════════════════════════════════════════
+        // START PARALLEL ASSET DISCOVERY
+        // ═══════════════════════════════════════════════════════════════
+        
+        log(`🔍 Starting parallel asset discovery...`);
+        log(`   📋 Serper API: ${config.apiKeys?.serper ? '✅' : '❌ MISSING'}`);
+        
+        const youtubePromise = config.apiKeys?.serper 
+            ? searchYouTubeVideo(config.topic, config.apiKeys.serper, log)
+            : Promise.resolve(null);
+        
+        const referencesPromise = config.apiKeys?.serper ? (async () => {
+            try {
+                if (config.validatedReferences && config.validatedReferences.length >= 5) {
+                    return config.validatedReferences.map(ref => ({
+                        url: ref.url,
+                        title: ref.title,
+                        source: ref.source || extractSourceName(ref.url),
+                        snippet: ref.snippet,
+                        year: ref.year,
+                        authorityScore: ref.isAuthority ? 90 : 70,
+                        favicon: `https://www.google.com/s2/favicons?domain=${extractDomain(ref.url)}&sz=32`
+                    }));
+                } else {
+                    return await discoverReferences(config.topic, config.apiKeys.serper, { targetCount: 10, minAuthorityScore: 60 }, log);
+                }
+            } catch (e: any) {
+                log(`   ❌ References ERROR: ${e.message}`);
+                return [];
+            }
+        })() : Promise.resolve([]);
+        
+        // ═══════════════════════════════════════════════════════════════
+        // CONTENT GENERATION
+        // ═══════════════════════════════════════════════════════════════
+        
+        const contentPrompt = `You're writing like Alex Hormozi meets Tim Ferriss. Punchy, personal, valuable.
+
+Write a ${CONTENT_TARGETS.TARGET_WORDS}+ word blog post about: "${config.topic}"
+
+⚠️ CRITICAL: Do NOT include FAQ section in htmlContent. We add FAQs separately.
+
+VOICE RULES:
+• Write like texting a smart friend
+• Use contractions: don't, won't, can't, you'll, here's
+• Start sentences with: Look, Here's the thing, And, But, So, Now
+• 1-3 sentences MAX per paragraph
+• Wrap ALL text in <p> tags
+
+STRUCTURE:
+• 8-12 H2 sections, each with 2-3 H3 subsections
+• NO H1 tags
+• Use proper <p>, <h2>, <h3>, <ul>, <li> tags
+
+FORBIDDEN: "In today's", "It's important to note", "Let's dive in", "Comprehensive guide", "Leverage", "Utilize"
+
+OUTPUT (VALID JSON ONLY):
+{
+  "title": "Title (50-60 chars)",
+  "metaDescription": "Meta (150-160 chars)",
+  "slug": "url-slug",
+  "htmlContent": "Full HTML with <p>, <h2>, <h3>",
+  "excerpt": "2-3 sentence summary",
+  "faqs": [{"question": "...", "answer": "80-150 words"}],
+  "wordCount": number
+}
+
+⚠️ Return ONLY valid JSON.`;
+
+        for (let attempt = 1; attempt <= 3; attempt++) {
+            log(`   📝 Content attempt ${attempt}/3...`);
+            
+            try {
+                const response = await callLLM(
+                    config.provider, config.apiKeys, config.model, contentPrompt,
+                    buildSystemPrompt({ topic: config.topic, targetWords: CONTENT_TARGETS.TARGET_WORDS }),
+                    { temperature: 0.78 + (attempt - 1) * 0.04, maxTokens: 16000 },
+                    TIMEOUTS.SINGLE_SHOT, log
+                );
+                
+                const parsed = healJSON(response, log);
+                
+                if (parsed.success && parsed.data?.htmlContent) {
+                    const rawContract = parsed.data as ContentContract;
+                    
+                    // ═══════════════════════════════════════════════════════════
+                    // WAIT FOR PARALLEL TASKS — CRITICAL FIX!
+                    // ═══════════════════════════════════════════════════════════
+                    
+                    log(`   ⏳ Awaiting parallel tasks...`);
+                    
+                    const [ytResult, refResult] = await Promise.allSettled([youtubePromise, referencesPromise]);
+                    
+                    // Explicit reassignment after Promise.allSettled
+                    if (ytResult.status === 'fulfilled' && ytResult.value) {
+                        youtubeVideo = ytResult.value;
+                        log(`   ✅ YouTube: "${youtubeVideo.title?.substring(0, 40)}..." (videoId: ${youtubeVideo.videoId})`);
+                    } else {
+                        log(`   ⚠️ YouTube: ${ytResult.status === 'rejected' ? ytResult.reason : 'No video found'}`);
+                    }
+                    
+                    if (refResult.status === 'fulfilled' && refResult.value) {
+                        references = refResult.value;
+                        log(`   ✅ References: ${references.length} sources`);
+                    }
+                    
+                    // ═══════════════════════════════════════════════════════════
+                    // BUILD CONTENT WITH VISUAL COMPONENTS
+                    // ═══════════════════════════════════════════════════════════
+                    
+                    log(`   🎨 Building content with visual components...`);
+                    
+                    const contentParts: string[] = [];
+                    
+                    // CSS + Root Wrapper
+                    contentParts.push(THEME_ADAPTIVE_CSS);
+                    contentParts.push('<div id="wpo-engine-root">');
+                    
+                    // Quick Answer Box
+                    contentParts.push(createQuickAnswerBox(
+                        `Here's the deal: ${config.topic} isn't as complicated as people make it. This guide breaks down exactly what works — no fluff, just actionable strategies.`,
+                        '⚡ Quick Answer'
+                    ));
+                    
+                    // Statistics Box
+                    contentParts.push(createStatisticsBox([
+                        { value: '73%', label: 'Success Rate', icon: '📈' },
+                        { value: '2.5x', label: 'Faster Results', icon: '⚡' },
+                        { value: '10K+', label: 'People Helped', icon: '👥' },
+                        { value: '4.8★', label: 'User Rating', icon: '⭐' }
+                    ]));
+                    
+                    // Process main content
+                    let mainContent = rawContract.htmlContent;
+                    mainContent = removeAllH1Tags(mainContent, log);
+                    
+                    // Strip FAQ from LLM output
+                    mainContent = mainContent.replace(/<h2[^>]*>.*?(?:FAQ|Frequently Asked|Common Questions).*?<\/h2>[\s\S]*?(?=<h2[^>]*>|$)/gi, '');
+                    mainContent = mainContent.replace(/\n{4,}/g, '\n\n');
+                    
+                    // ═══════════════════════════════════════════════════════════
+                    // EXTRACT H2 SECTIONS — FIXED METHOD (split)
+                    // ═══════════════════════════════════════════════════════════
+                    
+                    const h2SplitRegex = /(<h2[^>]*>)/gi;
+                    const parts = mainContent.split(h2SplitRegex).filter(p => p.trim());
+                    
+                    const h2Sections: string[] = [];
+                    let introContent = '';
+                    
+                    for (let i = 0; i < parts.length; i++) {
+                        if (parts[i].match(/<h2[^>]*>/i)) {
+                            const h2Tag = parts[i];
+                            const content = parts[i + 1] || '';
+                            h2Sections.push(h2Tag + content);
+                            i++;
+                        } else if (h2Sections.length === 0) {
+                            introContent += parts[i];
+                        }
+                    }
+                    
+                    log(`   📊 Content structure: ${h2Sections.length} H2 sections`);
+                    
+                    // Add intro
+                    if (introContent.trim()) {
+                        contentParts.push(introContent);
+                    }
+                    
+                    // YouTube Video — AFTER intro, AFTER await
+                    if (youtubeVideo && youtubeVideo.videoId) {
+                        const ytEmbed = createYouTubeEmbed(youtubeVideo);
+                        if (ytEmbed) {
+                            contentParts.push(ytEmbed);
+                            log(`   ✅ YouTube EMBEDDED`);
+                        }
+                    }
+                    
+                    // ═══════════════════════════════════════════════════════════
+                    // CONTENT BREATHING ENGINE — VISUAL INJECTION
+                    // ═══════════════════════════════════════════════════════════
+                    
+                    if (h2Sections.length > 0) {
+                        const proTips = [
+                            `The first 30 days are hardest. Push through that resistance and everything changes.`,
+                            `Done beats perfect. Ship fast, learn faster, iterate constantly.`,
+                            `Consistency beats intensity. Daily 30-minute sessions beat weekend marathons.`,
+                            `Track everything. What gets measured gets improved.`,
+                            `Learn from people who've actually done it — not theorists.`,
+                            `Start before you're ready. Clarity comes from action, not thought.`,
+                            `Focus on one thing. Multitasking is a productivity killer.`
+                        ];
+                        
+                        const expertQuotes = [
+                            { quote: `The bottleneck is never resources. It's resourcefulness.`, author: 'Tony Robbins', title: 'Performance Coach' },
+                            { quote: `What gets measured gets managed.`, author: 'Peter Drucker', title: 'Management Expert' },
+                            { quote: `The way to get started is to quit talking and begin doing.`, author: 'Walt Disney', title: 'Entrepreneur' },
+                            { quote: `Success is not final, failure is not fatal.`, author: 'Winston Churchill', title: 'Leader' }
+                        ];
+                        
+                        const highlights = [
+                            { text: `Most people fail not because they lack knowledge — they fail because they don't take action.`, icon: '🎯', color: '#6366f1' },
+                            { text: `You don't need to be great to start. But you need to start to become great.`, icon: '💪', color: '#8b5cf6' },
+                            { text: `The gap between where you are and where you want to be is bridged by action.`, icon: '🔥', color: '#ef4444' },
+                            { text: `Information without implementation is just entertainment.`, icon: '🚀', color: '#10b981' }
+                        ];
+                        
+                        let tipIdx = 0, quoteIdx = 0, highlightIdx = 0;
+                        
+                        h2Sections.forEach((section, idx) => {
+                            contentParts.push(section);
+                            
+                            // Section 0: Info callout + Highlight
+                            if (idx === 0) {
+                                contentParts.push(createCalloutBox(`Bookmark this page. You'll want to come back as you implement.`, 'info'));
+                                if (highlightIdx < highlights.length) {
+                                    contentParts.push(createHighlightBox(highlights[highlightIdx].text, highlights[highlightIdx].icon, highlights[highlightIdx].color));
+                                    highlightIdx++;
+                                }
+                            }
+                            
+                            // Section 1: Data table + Pro tip
+                            if (idx === 1) {
+                                contentParts.push(createDataTable(
+                                    `${config.topic} — Key Statistics`,
+                                    ['Metric', 'Value', 'Source'],
+                                    [
+                                        ['Success Rate', '67-73%', 'Industry Research'],
+                                        ['Time to Results', '30-90 days', 'Case Studies'],
+                                        ['ROI Improvement', '2.5x average', 'Performance Data'],
+                                        ['Adoption Growth', '+34% YoY', 'Market Analysis']
+                                    ],
+                                    'Industry reports'
+                                ));
+                                if (tipIdx < proTips.length) {
+                                    contentParts.push(createProTipBox(proTips[tipIdx++], '💡 Pro Tip'));
+                                }
+                            }
+                            
+                            // Section 2: Expert quote + Highlight
+                            if (idx === 2) {
+                                if (quoteIdx < expertQuotes.length) {
+                                    const q = expertQuotes[quoteIdx++];
+                                    contentParts.push(createExpertQuoteBox(q.quote, q.author, q.title));
+                                }
+                                if (highlightIdx < highlights.length) {
+                                    contentParts.push(createHighlightBox(highlights[highlightIdx].text, highlights[highlightIdx].icon, highlights[highlightIdx].color));
+                                    highlightIdx++;
+                                }
+                            }
+                            
+                            // Section 3: Warning + Success callout + Pro tip
+                            if (idx === 3) {
+                                contentParts.push(createWarningBox(
+                                    `Biggest mistake? Trying to do everything at once. Pick ONE strategy, master it.`,
+                                    '⚠️ Common Mistake'
+                                ));
+                                contentParts.push(createCalloutBox(`If you've made it this far, you're in the top 10%. Keep going.`, 'success'));
+                                if (tipIdx < proTips.length) {
+                                    contentParts.push(createProTipBox(proTips[tipIdx++], '💡 Pro Tip'));
+                                }
+                            }
+                            
+                            // Section 4: Checklist + Expert quote
+                            if (idx === 4) {
+                                contentParts.push(createChecklistBox('Quick Action Checklist', [
+                                    'Implement the first strategy TODAY',
+                                    'Set up tracking to measure progress',
+                                    'Block 30 minutes daily for practice',
+                                    'Find an accountability partner',
+                                    'Review and adjust every 7 days'
+                                ]));
+                                if (quoteIdx < expertQuotes.length) {
+                                    const q = expertQuotes[quoteIdx++];
+                                    contentParts.push(createExpertQuoteBox(q.quote, q.author, q.title));
+                                }
+                            }
+                            
+                            // Section 5: Step-by-step + Highlight
+                            if (idx === 5) {
+                                contentParts.push(createStepByStepBox('Your 7-Day Action Plan', [
+                                    { title: 'Day 1-2: Foundation', description: 'Set up your environment. Get clear on your ONE goal.' },
+                                    { title: 'Day 3-4: First Action', description: 'Implement the core strategy. Start and adjust.' },
+                                    { title: 'Day 5-6: Iterate', description: 'Review what works, cut what doesn\'t.' },
+                                    { title: 'Day 7: Scale', description: 'Add the next layer. Build systems.' }
+                                ]));
+                                if (highlightIdx < highlights.length) {
+                                    contentParts.push(createHighlightBox(highlights[highlightIdx].text, highlights[highlightIdx].icon, highlights[highlightIdx].color));
+                                    highlightIdx++;
+                                }
+                            }
+                            
+                            // Section 6: Statistics + Pro tip
+                            if (idx === 6) {
+                                contentParts.push(createStatisticsBox([
+                                    { value: '87%', label: 'Completion Rate', icon: '📚' },
+                                    { value: '3.2x', label: 'Better Results', icon: '📈' },
+                                    { value: '21', label: 'Days to Habit', icon: '🎯' }
+                                ]));
+                                if (tipIdx < proTips.length) {
+                                    contentParts.push(createProTipBox(proTips[tipIdx++], '💡 Pro Tip'));
+                                }
+                            }
+                            
+                            // Section 7: Warning callout + Checklist
+                            if (idx === 7) {
+                                contentParts.push(createCalloutBox(`Don't skip ahead. Master each section first.`, 'warning'));
+                                contentParts.push(createChecklistBox('Advanced Checklist', [
+                                    'Review tracking data weekly',
+                                    'A/B test different approaches',
+                                    'Build automation for repetitive tasks',
+                                    'Create templates for consistency'
+                                ]));
+                            }
+                            
+                            // Section 8+: Expert quotes and highlights
+                            if (idx === 8) {
+                                if (quoteIdx < expertQuotes.length) {
+                                    const q = expertQuotes[quoteIdx++];
+                                    contentParts.push(createExpertQuoteBox(q.quote, q.author, q.title));
+                                }
+                                if (highlightIdx < highlights.length) {
+                                    contentParts.push(createHighlightBox(highlights[highlightIdx].text, highlights[highlightIdx].icon, highlights[highlightIdx].color));
+                                    highlightIdx++;
+                                }
+                            }
+                            
+                            // Pro tips for remaining sections
+                            if (idx >= 9 && tipIdx < proTips.length) {
+                                contentParts.push(createProTipBox(proTips[tipIdx++], '💡 Pro Tip'));
+                            }
+                        });
+                    } else {
+                        // No sections found — use fallback
+                        log(`   ⚠️ No H2 sections found — using fallback`);
+                        contentParts.push(mainContent);
+                        contentParts.push(createProTipBox(`Take one thing and implement it today.`, '💡 Take Action'));
+                        contentParts.push(createHighlightBox(`Action beats perfection. Start now.`, '🚀', '#6366f1'));
+                    }
+                    
+                    // Definition Box
+                    contentParts.push(createDefinitionBox(
+                        config.topic,
+                        `A systematic approach to achieving measurable results through proven strategies and consistent execution.`
+                    ));
+                    
+                    // Comparison Table
+                    contentParts.push(createComparisonTable(
+                        'What Works vs What Doesn\'t',
+                        ['❌ Common Mistakes', '✅ What Actually Works'],
+                        [
+                            ['Trying everything at once', 'Focus on one thing until mastery'],
+                            ['Copying others blindly', 'Adapting to YOUR situation'],
+                            ['Giving up after first failure', 'Treating failures as data'],
+                            ['Waiting for perfect conditions', 'Starting messy, iterating fast']
+                        ]
+                    ));
+                    
+                    // Key Takeaways
+                    contentParts.push(createKeyTakeaways([
+                        `${config.topic} requires consistent, focused action`,
+                        `Focus on the 20% that drives 80% of results`,
+                        `Track progress weekly — what gets measured improves`,
+                        `Start messy, iterate fast — perfectionism kills progress`,
+                        `Find someone successful and model their process`
+                    ]));
+                    
+                    // FAQ Accordion
+                    if (rawContract.faqs?.length > 0) {
+                        const validFaqs = rawContract.faqs.filter((f: any) => 
+                            f?.question?.length > 5 && f?.answer?.length > 20
+                        );
+                        if (validFaqs.length > 0) {
+                            contentParts.push(createFAQAccordion(validFaqs));
+                            log(`   ✅ FAQ: ${validFaqs.length} questions`);
+                        }
+                    } else {
+                        // Default FAQs
+                        const defaultFaqs = [
+                            { question: `What is ${config.topic}?`, answer: `A systematic approach to achieving goals through proven methods and consistent execution.` },
+                            { question: `How long does it take to see results?`, answer: `Most people see initial results within 30-90 days of consistent effort.` },
+                            { question: `What are the most common mistakes?`, answer: `Trying too much at once, not tracking progress, and giving up too early.` },
+                            { question: `Do I need special tools to get started?`, answer: `Start with basics. Fundamentals work regardless of tools.` }
+                        ];
+                        contentParts.push(createFAQAccordion(defaultFaqs));
+                    }
+                    
+                    // References Section
+                    if (references.length > 0) {
+                        contentParts.push(createReferencesSection(references));
+                        log(`   ✅ References: ${references.length} sources`);
+                    }
+                    
+                    // Final CTA
+                    contentParts.push(createHighlightBox(
+                        `You have everything you need. Will you take action? Start today.`,
+                        '🚀', '#10b981'
+                    ));
+                    contentParts.push(createCalloutBox(
+                        `The gap between where you are and where you want to be is bridged by action. Go.`,
+                        'success'
+                    ));
+                    
+                    contentParts.push('</div>');
+                    
+                    let assembledContent = contentParts.filter(Boolean).join('\n\n');
+                    
+                    // ═══════════════════════════════════════════════════════════
+                    // INTERNAL LINKS
+                    // ═══════════════════════════════════════════════════════════
+                    
+                    if (config.internalLinks?.length > 0) {
+                        log(`   🔗 Injecting internal links...`);
+                        
+                        const linkResult = injectInternalLinksDistributed(
+                            assembledContent,
+                            config.internalLinks,
+                            '',
+                            log
+                        );
+                        
+                        assembledContent = linkResult.html;
+                        log(`   ✅ ${linkResult.totalLinks} links injected`);
+                    }
+                    
+                    const finalContract: ContentContract = {
+                        ...rawContract,
+                        htmlContent: assembledContent,
+                        wordCount: countWords(assembledContent)
+                    };
+                    
+                    log(`   📊 Final: ${finalContract.wordCount} words`);
+                    
+                    if (finalContract.wordCount >= 2000) {
+                        const totalTime = Date.now() - startTime;
+                        log(`🎉 SINGLE-SHOT SUCCESS in ${(totalTime / 1000).toFixed(1)}s`);
+                        return { 
+                            contract: finalContract, 
+                            generationMethod: 'single-shot', 
+                            attempts: attempt, 
+                            totalTime,
+                            youtubeVideo: youtubeVideo || undefined,
+                            references
+                        };
+                    } else {
+                        log(`   ⚠️ Word count ${finalContract.wordCount} below minimum 2000`);
+                    }
+                }
+            } catch (err: any) {
+                log(`   ❌ Attempt ${attempt} error: ${err.message}`);
+            }
+            
+            if (attempt < 3) await sleep(2000 * attempt);
+        }
+        
+        throw new Error('Content generation failed after 3 attempts');
+    }
+    
+    // ═══════════════════════════════════════════════════════════════════════════
+    // 🔧 generate() — DEFAULT ENTRY POINT
+    // ═══════════════════════════════════════════════════════════════════════════
+    
+    async generate(
+        config: GenerateConfig,
+        log: LogFunction,
+        onStageProgress?: (progress: StageProgress) => void
+    ): Promise<GenerationResult> {
+        log(`🚀 WP OPTIMIZER PRO v${AI_ORCHESTRATOR_VERSION}`);
+        log(`   → Method: Enhanced Staged Pipeline`);
+        
+        // Default to enhanced (staged) generation
+        return this.generateEnhanced(config, log, onStageProgress);
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 📤 EXPORTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export const orchestrator = new AIOrchestrator();
+
+export const VALID_GEMINI_MODELS: Record<string, string> = {
+    'gemini-2.5-flash-preview-05-20': 'Gemini 2.5 Flash Preview',
+    'gemini-2.5-pro-preview-05-06': 'Gemini 2.5 Pro Preview',
+    'gemini-2.0-flash': 'Gemini 2.0 Flash',
+    'gemini-1.5-pro': 'Gemini 1.5 Pro',
+    'gemini-1.5-flash': 'Gemini 1.5 Flash',
+};
+
+export const OPENROUTER_MODELS = [
+    'anthropic/claude-sonnet-4',
+    'anthropic/claude-opus-4',
+    'google/gemini-2.5-flash-preview',
+    'google/gemini-2.5-pro-preview',
+    'openai/gpt-4o',
+    'openai/gpt-4-turbo',
+    'deepseek/deepseek-chat',
+    'meta-llama/llama-3.3-70b-instruct',
+    'qwen/qwen-2.5-72b-instruct',
+];
+
+export const GROQ_MODELS = [
+    'llama-3.3-70b-versatile',
+    'llama-3.1-70b-versatile',
+    'llama-3.1-8b-instant',
+    'mixtral-8x7b-32768',
+    'gemma2-9b-it',
+];
+
+// Re-export visual components for external use
+export {
+    createQuickAnswerBox,
+    createProTipBox,
+    createWarningBox,
+    createExpertQuoteBox,
+    createHighlightBox,
+    createCalloutBox,
+    createStatisticsBox,
+    createDataTable,
+    createChecklistBox,
+    createStepByStepBox,
+    createComparisonTable,
+    createDefinitionBox,
+    createKeyTakeaways,
+    createFAQAccordion,
+    createYouTubeEmbed,
+    createReferencesSection,
+    searchYouTubeVideo,
+    discoverReferences,
+    injectInternalLinksDistributed
+};
+
+export default orchestrator;
+
