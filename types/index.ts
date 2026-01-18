@@ -334,6 +334,385 @@ export interface Toast {
     duration?: number;
 }
 
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 🏢 SITE CONTEXT - Organization & Audience Settings
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export interface SiteContext {
+  organizationName: string;
+  authorName: string;
+  industry: 'saas' | 'ecommerce' | 'healthcare' | 'finance' | 'education' | 'media' | 'technology' | 'professional-services' | 'real-estate' | 'other';
+  targetAudience: {
+    persona: string;
+    experienceLevel: 'beginner' | 'intermediate' | 'advanced' | 'expert';
+    region?: string;
+    demographics?: string;
+  };
+  brandVoice?: string;
+  complianceRules?: string[];
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 🎯 OPTIMIZATION MODE - Surgical vs Full Rewrite
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export type OptimizationMode = 'surgical' | 'full-rewrite';
+
+export interface OptimizationOptions {
+  mode: OptimizationMode;
+  preserveImages: boolean;
+  optimizeAltText: boolean;
+  keepFeaturedImage: boolean;
+  keepCategories: boolean;
+  keepTags: boolean;
+  targetKeyword?: string;
+  enableEntityGapAnalysis: boolean;
+  enableReferenceDiscovery: boolean;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 📊 CONTENT STRATEGY METRICS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export interface ContentStrategyMetrics {
+  totalPages: number;
+  atTarget: number;
+  processing: number;
+  avgScore: number;
+  completed: number;
+  totalWords: number;
+  successRate: number;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 🕷️ SITEMAP CRAWLER
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export interface SitemapCrawlerConfig {
+  sitemapUrl: string;
+  followNestedSitemaps: boolean;
+  respectRobotsTxt: boolean;
+  maxConcurrent: number;
+  rateLimit: number;
+}
+
+export interface SitemapCrawlResult {
+  pages: CrawledPage[];
+  totalUrls: number;
+  successfulCrawls: number;
+  failedCrawls: number;
+  duration: number;
+  errors: Array<{
+    url: string;
+    error: string;
+  }>;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ⚡ QUICK OPTIMIZE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export interface QuickOptimizeRequest {
+  pageUrl: string;
+  targetKeyword?: string;
+  optimizationOptions: OptimizationOptions;
+  siteContext: SiteContext;
+  publishMode: 'draft' | 'publish';
+}
+
+export interface QuickOptimizeResult {
+  success: boolean;
+  postId?: number;
+  newUrl?: string;
+  metricsImprovement: {
+    readability: { before: number; after: number };
+    seoScore: { before: number; after: number };
+    wordCount: { before: number; after: number };
+  };
+  duration: number;
+  error?: string;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 📦 BULK OPTIMIZATION & PAGE QUEUE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export type QueueStatus = 'pending' | 'processing' | 'completed' | 'failed';
+
+export interface PageQueueItem {
+  id: string;
+  url: string;
+  targetKeyword?: string;
+  status: QueueStatus;
+  priority: number;
+  optimizationOptions: OptimizationOptions;
+  addedAt: number;
+  startedAt?: number;
+  completedAt?: number;
+  result?: QuickOptimizeResult;
+  error?: string;
+  retryCount: number;
+}
+
+export interface BulkOptimizationConfig {
+  urls: string[];
+  optimizationOptions: OptimizationOptions;
+  siteContext: SiteContext;
+  maxConcurrent: number;
+  retryStrategy: {
+    maxRetries: number;
+    backoffMultiplier: number;
+  };
+}
+
+export interface BulkOptimizationProgress {
+  total: number;
+  pending: number;
+  processing: number;
+  completed: number;
+  failed: number;
+  currentItems: PageQueueItem[];
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 📊 ACTIVITY LOG
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export type ActivityStatus = 'success' | 'failed' | 'warning' | 'info';
+
+export interface ActivityLogEntry {
+  id: string;
+  timestamp: number;
+  pageUrl: string;
+  action: 'optimize' | 'crawl' | 'analyze' | 'publish';
+  status: ActivityStatus;
+  mode: OptimizationMode;
+  metrics: {
+    previousScore?: number;
+    newScore?: number;
+    wordDelta?: number;
+    readabilityDelta?: number;
+    seoDelta?: number;
+  };
+  duration: number;
+  error?: string;
+  details?: string;
+}
+
+export interface ActivityLogFilter {
+  status?: ActivityStatus[];
+  action?: string[];
+  dateRange?: {
+    start: number;
+    end: number;
+  };
+  searchQuery?: string;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 📈 ANALYTICS & PERFORMANCE TRACKING
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export interface SessionStatistics {
+  sessionId: string;
+  startTime: number;
+  endTime?: number;
+  pagesProcessed: number;
+  pagesImproved: number;
+  wordsGenerated: number;
+  successRate: number;
+  avgDuration: number;
+  avgScoreImprovement: number;
+}
+
+export interface RecentJob {
+  id: string;
+  pageUrl: string;
+  mode: OptimizationMode;
+  completedAt: number;
+  duration: number;
+  scoreChange: {
+    readability: number;
+    seo: number;
+    overall: number;
+  };
+  wordDelta: number;
+  status: 'success' | 'failed';
+}
+
+export interface AnalyticsMetrics extends ContentStrategyMetrics {
+  sessionStats: SessionStatistics;
+  recentJobs: RecentJob[];
+  trendData: {
+    date: string;
+    pagesOptimized: number;
+    avgScore: number;
+    successRate: number;
+  }[];
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 🧠 ENTITY GAP ANALYSIS (ENHANCED)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export interface EntityAnalysisResult {
+  entities: ExtractedEntity[];
+  gaps: EntityGap[];
+  opportunities: EntityOpportunity[];
+  coverage: number;
+  recommendations: string[];
+}
+
+export interface ExtractedEntity {
+  text: string;
+  type: 'person' | 'organization' | 'location' | 'concept' | 'product' | 'technology';
+  frequency: number;
+  relevance: number;
+  contexts: string[];
+}
+
+export interface EntityGap {
+  entity: string;
+  type: string;
+  importance: 'critical' | 'high' | 'medium' | 'low';
+  competitorMentions: number;
+  suggestedPlacement: 'introduction' | 'body' | 'conclusion';
+  contextSuggestion: string;
+}
+
+export interface EntityOpportunity {
+  entity: string;
+  currentMentions: number;
+  recommendedMentions: number;
+  semanticVariants: string[];
+  linkedTopics: string[];
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 📚 REFERENCE DISCOVERY (ENHANCED)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export interface ReferenceDiscoveryConfig {
+  query: string;
+  maxResults: number;
+  sourceTypes: ('academic' | 'standards' | 'docs' | 'news' | 'internal')[];
+  requireAuthority: boolean;
+  minAuthorityScore: number;
+}
+
+export interface DiscoveredReference extends ValidatedReference {
+  discoveryMethod: 'serp' | 'entity-link' | 'competitor' | 'internal';
+  relevanceScore: number;
+  citationContext: string;
+  supportingEntities: string[];
+}
+
+export interface ReferenceInsertionPlan {
+  reference: DiscoveredReference;
+  targetSection: string;
+  insertionType: 'inline-citation' | 'footnote' | 'reference-list' | 'link';
+  anchorText: string;
+  contextSnippet: string;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 🔬 SURGICAL MODE TRANSFORMERS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export interface SurgicalTransform {
+  type: 'heading-refinement' | 'entity-insertion' | 'gap-filling' | 'grammar-fix' | 'seo-enhancement';
+  section: string;
+  original: string;
+  transformed: string;
+  confidence: number;
+  similarity: number;
+  reasoning: string;
+}
+
+export interface SurgicalModeResult {
+  transforms: SurgicalTransform[];
+  preservedSections: string[];
+  overallSimilarity: number;
+  changedSections: number;
+  totalSections: number;
+  qualityGates: {
+    readability: { passed: boolean; score: number };
+    seo: { passed: boolean; score: number };
+    grammar: { passed: boolean; score: number };
+    entityCoverage: { passed: boolean; score: number };
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 🏗️ CONTENT ENGINE PIPELINE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export interface ContentPipelineStage {
+  name: string;
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
+  startTime?: number;
+  endTime?: number;
+  output?: any;
+  error?: string;
+}
+
+export interface ContentPipelineResult {
+  mode: OptimizationMode;
+  stages: ContentPipelineStage[];
+  finalContent: ContentContract;
+  metrics: SeoMetrics;
+  qualityScore: number;
+  duration: number;
+  entityAnalysis?: EntityAnalysisResult;
+  surgicalResult?: SurgicalModeResult;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 🗃️ GLOBAL APP STATE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export interface AppState {
+  siteContext: SiteContext;
+  optimizationOptions: OptimizationOptions;
+  contentStrategy: ContentStrategyMetrics;
+  pageQueue: PageQueueItem[];
+  activityLog: ActivityLogEntry[];
+  analytics: AnalyticsMetrics;
+  apiKeys: APIKeyConfig;
+  currentSession: SessionStatistics;
+  isProcessing: boolean;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 🔄 QUALITY GATES & VALIDATION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export interface QualityGate {
+  name: string;
+  metric: keyof SeoMetrics;
+  minThreshold: number;
+  maxThreshold?: number;
+  weight: number;
+  required: boolean;
+}
+
+export interface QualityGateResult {
+  gate: QualityGate;
+  value: number;
+  passed: boolean;
+  delta?: number;
+  recommendation?: string;
+}
+
+export interface QualityValidationResult {
+  overallScore: number;
+  passed: boolean;
+  gates: QualityGateResult[];
+  autoFixable: boolean;
+  requiresRegeneration: boolean;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // 📤 EXPORTS
 // ═══════════════════════════════════════════════════════════════════════════════
