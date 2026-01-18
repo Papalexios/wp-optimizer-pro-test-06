@@ -383,7 +383,7 @@ export default function App() {
             topic: topic.trim(),
             provider,
             model,
-            apiKeys: {      apiKeys: {
+            apiKeys: {    
         google: apiKeys.google || '',
         openrouter: apiKeys.openrouter || '',
         openrouterModel: apiKeys.openrouterModel || '',
