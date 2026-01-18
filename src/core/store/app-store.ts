@@ -1,406 +1,315 @@
 /**
- * Enterprise State Management Store v40.0
+ * ═══════════════════════════════════════════════════════════════════════════
+ * Enterprise-Grade Zustand State Management Store v40.0
+ * ═══════════════════════════════════════════════════════════════════════════
  * 
- * Zustand-inspired state management with:
- * - Immutable state updates
- * - Middleware support (logging, persistence)
+ * SOTA Features:
+ * - Immutable state updates with Immer
+ * - Middleware support (logging, persistence, devtools)
  * - Computed/derived state
  * - Action history for debugging
  * - Type-safe selectors
- * - Persistence to localStorage
+ * - Performance optimizations
+ * - LocalStorage persistence
  * 
  * @module src/core/store/app-store
  */
 
-import type { ContentContract, GenerateConfig, APIKeyConfig } from '../../types';
+import { create } from 'zustand';
+import { devtools, persist, subscribeWithSelector } from 'zustand/middleware';
+import { immer } from 'zustand/middleware/immer';
+import type {
+  AppState,
+  SiteContext,
+  OptimizationOptions,
+  ContentStrategyMetrics,
+  PageQueueItem,
+  ActivityLogEntry,
+  AnalyticsMetrics,
+  APIKeyConfig,
+  SessionStatistics,
+  QuickOptimizeRequest,
+  QuickOptimizeResult,
+  BulkOptimizationProgress,
+  SitemapCrawlResult,
+  OptimizationMode,
+  QueueStatus,
+  ActivityStatus
+} from '../../../types';
 
-// ============================================================================
-// Types
-// ============================================================================
+// ═══════════════════════════════════════════════════════════════════════════
+// DEFAULT STATE VALUES
+// ═══════════════════════════════════════════════════════════════════════════
 
-export type GenerationStatus = 'idle' | 'generating' | 'success' | 'error';
+const DEFAULT_SITE_CONTEXT: SiteContext = {
+  organizationName: '',
+  authorName: '',
+  industry: 'other',
+  targetAudience: {
+    persona: '',
+    experienceLevel: 'intermediate'
+  }
+};
 
-export interface GenerationProgress {
-  stage: string;
-  progress: number;
-  message: string;
-  startedAt?: number;
-  completedAt?: number;
-}
+const DEFAULT_OPTIMIZATION_OPTIONS: OptimizationOptions = {
+  mode: 'surgical',
+  preserveImages: true,
+  optimizeAltText: true,
+  keepFeaturedImage: true,
+  keepCategories: true,
+  keepTags: true,
+  enableEntityGapAnalysis: true,
+  enableReferenceDiscovery: true
+};
 
-export interface GenerationHistory {
-  id: string;
-  topic: string;
-  status: GenerationStatus;
-  contract?: ContentContract;
-  error?: string;
-  createdAt: number;
-  completedAt?: number;
-  config: Partial<GenerateConfig>;
-}
+const DEFAULT_CONTENT_STRATEGY: ContentStrategyMetrics = {
+  totalPages: 0,
+  atTarget: 0,
+  processing: 0,
+  avgScore: 0,
+  completed: 0,
+  totalWords: 0,
+  successRate: 100
+};
 
-export interface AppState {
-  // API Keys
-  apiKeys: APIKeyConfig;
-  
-  // Generation
-  currentTopic: string;
-  generationStatus: GenerationStatus;
-  generationProgress: GenerationProgress | null;
-  currentContract: ContentContract | null;
-  generationError: string | null;
-  
-  // History
-  history: GenerationHistory[];
-  
-  // UI State
-  activeTab: 'generate' | 'history' | 'settings';
-  sidebarOpen: boolean;
-  theme: 'light' | 'dark' | 'system';
-  
-  // Config
-  provider: string;
-  model: string;
-  temperature: number;
-  
-  // WordPress
-  wpConfig: {
-    siteUrl: string;
-    username: string;
-    appPassword: string;
-    connected: boolean;
-  };
-}
+const DEFAULT_SESSION: SessionStatistics = {
+  sessionId: `session_${Date.now()}`,
+  startTime: Date.now(),
+  pagesProcessed: 0,
+  pagesImproved: 0,
+  wordsGenerated: 0,
+  successRate: 100,
+  avgDuration: 0,
+  avgScoreImprovement: 0
+};
 
-export interface AppActions {
-  // API Keys
-  setApiKey: (provider: string, key: string) => void;
+// ═══════════════════════════════════════════════════════════════════════════
+// STORE INTERFACE
+// ═══════════════════════════════════════════════════════════════════════════
+
+interface WPOptimizerStore extends AppState {
+  // ───────────────────────────────────────────────────────────────────────
+  // Site Context Actions
+  // ───────────────────────────────────────────────────────────────────────
+  setSiteContext: (context: Partial<SiteContext>) => void;
+  updateSiteContext: (updates: Partial<SiteContext>) => void;
+  resetSiteContext: () => void;
+
+  // ───────────────────────────────────────────────────────────────────────
+  // Optimization Options Actions
+  // ───────────────────────────────────────────────────────────────────────
+  setOptimizationMode: (mode: OptimizationMode) => void;
+  togglePreserveImages: () => void;
+  toggleOptimizeAltText: () => void;
+  toggleKeepFeaturedImage: () => void;
+  toggleKeepCategories: () => void;
+  toggleKeepTags: () => void;
+  toggleEntityGapAnalysis: () => void;
+  toggleReferenceDiscovery: () => void;
+  setTargetKeyword: (keyword: string) => void;
+  updateOptimizationOptions: (options: Partial<OptimizationOptions>) => void;
+  resetOptimizationOptions: () => void;
+
+  // ───────────────────────────────────────────────────────────────────────
+  // Content Strategy Actions
+  // ───────────────────────────────────────────────────────────────────────
+  updateContentStrategy: (metrics: Partial<ContentStrategyMetrics>) => void;
+  incrementProcessing: () => void;
+  decrementProcessing: () => void;
+  incrementCompleted: () => void;
+  incrementAtTarget: () => void;
+  updateAvgScore: (newScore: number) => void;
+  addWords: (count: number) => void;
+  recalculateSuccessRate: () => void;
+
+  // ───────────────────────────────────────────────────────────────────────
+  // Page Queue Actions
+  // ───────────────────────────────────────────────────────────────────────
+  addToQueue: (item: Omit<PageQueueItem, 'id' | 'addedAt' | 'retryCount'>) => void;
+  addBulkToQueue: (urls: string[], options?: Partial<OptimizationOptions>) => void;
+  updateQueueItem: (id: string, updates: Partial<PageQueueItem>) => void;
+  setQueueItemStatus: (id: string, status: QueueStatus) => void;
+  removeFromQueue: (id: string) => void;
+  clearQueue: () => void;
+  clearCompletedQueue: () => void;
+  getNextPendingItem: () => PageQueueItem | undefined;
+  getQueueProgress: () => BulkOptimizationProgress;
+
+  // ───────────────────────────────────────────────────────────────────────
+  // Activity Log Actions
+  // ───────────────────────────────────────────────────────────────────────
+  addActivityLog: (entry: Omit<ActivityLogEntry, 'id' | 'timestamp'>) => void;
+  clearActivityLog: () => void;
+  getActivityLogByStatus: (status: ActivityStatus) => ActivityLogEntry[];
+  getRecentActivity: (limit: number) => ActivityLogEntry[];
+
+  // ───────────────────────────────────────────────────────────────────────
+  // Analytics Actions
+  // ───────────────────────────────────────────────────────────────────────
+  updateAnalytics: (metrics: Partial<AnalyticsMetrics>) => void;
+  addRecentJob: (job: any) => void;
+  updateSessionStats: (stats: Partial<SessionStatistics>) => void;
+  resetSession: () => void;
+
+  // ───────────────────────────────────────────────────────────────────────
+  // API Keys Actions
+  // ───────────────────────────────────────────────────────────────────────
   setApiKeys: (keys: Partial<APIKeyConfig>) => void;
-  
-  // Generation
-  setTopic: (topic: string) => void;
-  startGeneration: () => void;
-  updateProgress: (progress: GenerationProgress) => void;
-  completeGeneration: (contract: ContentContract) => void;
-  failGeneration: (error: string) => void;
-  resetGeneration: () => void;
-  
-  // History
-  addToHistory: (entry: GenerationHistory) => void;
-  clearHistory: () => void;
-  removeFromHistory: (id: string) => void;
-  
-  // UI
-  setActiveTab: (tab: AppState['activeTab']) => void;
-  toggleSidebar: () => void;
-  setTheme: (theme: AppState['theme']) => void;
-  
-  // Config
-  setProvider: (provider: string) => void;
-  setModel: (model: string) => void;
-  setTemperature: (temp: number) => void;
-  
-  // WordPress
-  setWpConfig: (config: Partial<AppState['wpConfig']>) => void;
-  
-  // Persistence
-  hydrate: () => void;
-  persist: () => void;
+  updateApiKey: (provider: keyof APIKeyConfig, value: string) => void;
+
+  // ───────────────────────────────────────────────────────────────────────
+  // Processing State Actions
+  // ───────────────────────────────────────────────────────────────────────
+  setProcessing: (isProcessing: boolean) => void;
+  startProcessing: () => void;
+  stopProcessing: () => void;
+
+  // ───────────────────────────────────────────────────────────────────────
+  // Utility Actions
+  // ───────────────────────────────────────────────────────────────────────
+  resetStore: () => void;
+  exportState: () => string;
+  importState: (stateJson: string) => void;
 }
 
-export type AppStore = AppState & AppActions;
+// ═══════════════════════════════════════════════════════════════════════════
+// ZUSTAND STORE IMPLEMENTATION
+// ═══════════════════════════════════════════════════════════════════════════
 
-// ============================================================================
-// Initial State
-// ============================================================================
+export const useAppStore = create<WPOptimizerStore>()(
+  devtools(
+    persist(
+      immer(
+        subscribeWithSelector((set, get) => ({
+          // Initial State
+          siteContext: DEFAULT_SITE_CONTEXT,
+          optimizationOptions: DEFAULT_OPTIMIZATION_OPTIONS,
+          contentStrategy: DEFAULT_CONTENT_STRATEGY,
+          pageQueue: [],
+          activityLog: [],
+          analytics: {
+            ...DEFAULT_CONTENT_STRATEGY,
+            sessionStats: DEFAULT_SESSION,
+            recentJobs: [],
+            trendData: []
+          },
+          apiKeys: {},
+          currentSession: DEFAULT_SESSION,
+          isProcessing: false,
 
-const initialState: AppState = {
-  apiKeys: {
-    google: '',
-    openrouter: '',
-    openai: '',
-    anthropic: '',
-    groq: '',
-    serper: '',
-  },
-  currentTopic: '',
-  generationStatus: 'idle',
-  generationProgress: null,
-  currentContract: null,
-  generationError: null,
-  history: [],
-  activeTab: 'generate',
-  sidebarOpen: true,
-  theme: 'system',
-  provider: 'google',
-  model: 'gemini-2.5-flash-preview-05-20',
-  temperature: 0.7,
-  wpConfig: {
-    siteUrl: '',
-    username: '',
-    appPassword: '',
-    connected: false,
-  },
-};
+          // Site Context Actions
+          setSiteContext: (context) => set({ siteContext: { ...DEFAULT_SITE_CONTEXT, ...context } }),
+          updateSiteContext: (updates) => set((state) => ({ siteContext: { ...state.siteContext, ...updates } })),
+          resetSiteContext: () => set({ siteContext: DEFAULT_SITE_CONTEXT }),
 
-// ============================================================================
-// Store Implementation
-// ============================================================================
+          // Optimization Options Actions
+          setOptimizationMode: (mode) => set((state) => ({ optimizationOptions: { ...state.optimizationOptions, mode } })),
+          togglePreserveImages: () => set((state) => ({ optimizationOptions: { ...state.optimizationOptions, preserveImages: !state.optimizationOptions.preserveImages } })),
+          toggleOptimizeAltText: () => set((state) => ({ optimizationOptions: { ...state.optimizationOptions, optimizeAltText: !state.optimizationOptions.optimizeAltText } })),
+          toggleKeepFeaturedImage: () => set((state) => ({ optimizationOptions: { ...state.optimizationOptions, keepFeaturedImage: !state.optimizationOptions.keepFeaturedImage } })),
+          toggleKeepCategories: () => set((state) => ({ optimizationOptions: { ...state.optimizationOptions, keepCategories: !state.optimizationOptions.keepCategories } })),
+          toggleKeepTags: () => set((state) => ({ optimizationOptions: { ...state.optimizationOptions, keepTags: !state.optimizationOptions.keepTags } })),
+          toggleEntityGapAnalysis: () => set((state) => ({ optimizationOptions: { ...state.optimizationOptions, enableEntityGapAnalysis: !state.optimizationOptions.enableEntityGapAnalysis } })),
+          toggleReferenceDiscovery: () => set((state) => ({ optimizationOptions: { ...state.optimizationOptions, enableReferenceDiscovery: !state.optimizationOptions.enableReferenceDiscovery } })),
+          setTargetKeyword: (keyword) => set((state) => ({ optimizationOptions: { ...state.optimizationOptions, targetKeyword: keyword } })),
+          updateOptimizationOptions: (options) => set((state) => ({ optimizationOptions: { ...state.optimizationOptions, ...options } })),
+          resetOptimizationOptions: () => set({ optimizationOptions: DEFAULT_OPTIMIZATION_OPTIONS }),
 
-type Listener = () => void;
-type Selector<T> = (state: AppState) => T;
+          // Content Strategy Actions
+          updateContentStrategy: (metrics) => set((state) => ({ contentStrategy: { ...state.contentStrategy, ...metrics } })),
+          incrementProcessing: () => set((state) => ({ contentStrategy: { ...state.contentStrategy, processing: state.contentStrategy.processing + 1 } })),
+          decrementProcessing: () => set((state) => ({ contentStrategy: { ...state.contentStrategy, processing: Math.max(0, state.contentStrategy.processing - 1) } })),
+          incrementCompleted: () => set((state) => ({ contentStrategy: { ...state.contentStrategy, completed: state.contentStrategy.completed + 1 } })),
+          incrementAtTarget: () => set((state) => ({ contentStrategy: { ...state.contentStrategy, atTarget: state.contentStrategy.atTarget + 1 } })),
+          updateAvgScore: (newScore) => set((state) => {
+            const total = state.contentStrategy.completed + 1;
+            const avgScore = ((state.contentStrategy.avgScore * state.contentStrategy.completed) + newScore) / total;
+            return { contentStrategy: { ...state.contentStrategy, avgScore } };
+          }),
+          addWords: (count) => set((state) => ({ contentStrategy: { ...state.contentStrategy, totalWords: state.contentStrategy.totalWords + count } })),
+          recalculateSuccessRate: () => set((state) => {
+            const total = state.contentStrategy.completed;
+            const successful = state.activityLog.filter(log => log.status === 'success').length;
+            const successRate = total > 0 ? (successful / total) * 100 : 100;
+            return { contentStrategy: { ...state.contentStrategy, successRate } };
+          }),
 
-class Store {
-  private state: AppState;
-  private listeners: Set<Listener> = new Set();
-  private actionHistory: Array<{ action: string; payload?: unknown; timestamp: number }> = [];
+          // Page Queue Actions
+          addToQueue: (item) => set((state) => ({
+            pageQueue: [...state.pageQueue, { ...item, id: `queue_${Date.now()}_${Math.random()}`, addedAt: Date.now(), retryCount: 0 }]
+          })),
+          addBulkToQueue: (urls, options) => set((state) => {
+            const newItems = urls.map((url, index) => ({
+              url,
+              status: 'pending' as QueueStatus,
+              priority: index,
+              optimizationOptions: { ...state.optimizationOptions, ...(options || {}) },
+              id: `queue_${Date.now()}_${index}`,
+              addedAt: Date.now(),
+              retryCount: 0
+            }));
+            return { pageQueue: [...state.pageQueue, ...newItems] };
+          }),
+          updateQueueItem: (id, updates) => set((state) => ({
+            pageQueue: state.pageQueue.map(item => item.id === id ? { ...item, ...updates } : item)
+          })),
+          setQueueItemStatus: (id, status) => set((state) => ({
+            pageQueue: state.pageQueue.map(item => item.id === id ? { ...item, status } : item)
+          })),
+          removeFromQueue: (id) => set((state) => ({ pageQueue: state.pageQueue.filter(item => item.id !== id) })),
+          clearQueue: () => set({ pageQueue: [] }),
+          clearCompletedQueue: () => set((state) => ({ pageQueue: state.pageQueue.filter(item => item.status !== 'completed') })),
+          getNextPendingItem: () => get().pageQueue.find(item => item.status === 'pending'),
+          getQueueProgress: () => {
+            const queue = get().pageQueue;
+            return {
+              total: queue.length,
+              pending: queue.filter(i => i.status === 'pending').length,
+              processing: queue.filter(i => i.status === 'processing').length,
+              completed: queue.filter(i => i.status === 'completed').length,
+              failed: queue.filter(i => i.status === 'failed').length,
+              currentItems: queue
+            };
+          },
 
-  constructor(initial: AppState) {
-    this.state = { ...initial };
-  }
+          // Activity Log Actions
+          addActivityLog: (entry) => set((state) => ({
+            activityLog: [{ ...entry, id: `log_${Date.now()}`, timestamp: Date.now() }, ...state.activityLog].slice(0, 1000)
+          })),
+          clearActivityLog: () => set({ activityLog: [] }),
+          getActivityLogByStatus: (status) => get().activityLog.filter(log => log.status === status),
+          getRecentActivity: (limit) => get().activityLog.slice(0, limit),
 
-  getState(): AppState {
-    return this.state;
-  }
+          // Analytics Actions
+          updateAnalytics: (metrics) => set((state) => ({ analytics: { ...state.analytics, ...metrics } })),
+          addRecentJob: (job) => set((state) => ({ analytics: { ...state.analytics, recentJobs: [job, ...state.analytics.recentJobs].slice(0, 20) } })),
+          updateSessionStats: (stats) => set((state) => ({ currentSession: { ...state.currentSession, ...stats } })),
+          resetSession: () => set({ currentSession: { ...DEFAULT_SESSION, sessionId: `session_${Date.now()}`, startTime: Date.now() } }),
 
-  setState(partial: Partial<AppState> | ((state: AppState) => Partial<AppState>)): void {
-    const nextPartial = typeof partial === 'function' ? partial(this.state) : partial;
-    this.state = { ...this.state, ...nextPartial };
-    this.notify();
-  }
+          // API Keys Actions
+          setApiKeys: (keys) => set({ apiKeys: keys }),
+          updateApiKey: (provider, value) => set((state) => ({ apiKeys: { ...state.apiKeys, [provider]: value } })),
 
-  subscribe(listener: Listener): () => void {
-    this.listeners.add(listener);
-    return () => this.listeners.delete(listener);
-  }
+          // Processing State
+          setProcessing: (isProcessing) => set({ isProcessing }),
+          startProcessing: () => set({ isProcessing: true }),
+          stopProcessing: () => set({ isProcessing: false }),
 
-  private notify(): void {
-    this.listeners.forEach((listener) => listener());
-  }
-
-  private logAction(action: string, payload?: unknown): void {
-    this.actionHistory.push({ action, payload, timestamp: Date.now() });
-    if (this.actionHistory.length > 100) {
-      this.actionHistory.shift();
-    }
-    if (process.env.NODE_ENV === 'development') {
-      console.log(`[Store] ${action}`, payload);
-    }
-  }
-
-  getActionHistory() {
-    return [...this.actionHistory];
-  }
-}
-
-const store = new Store(initialState);
-
-// ============================================================================
-// Actions
-// ============================================================================
-
-export const actions: AppActions = {
-  // API Keys
-  setApiKey: (provider, key) => {
-    store.setState((state) => ({
-      apiKeys: { ...state.apiKeys, [provider]: key },
-    }));
-  },
-
-  setApiKeys: (keys) => {
-    store.setState((state) => ({
-      apiKeys: { ...state.apiKeys, ...keys },
-    }));
-  },
-
-  // Generation
-  setTopic: (topic) => {
-    store.setState({ currentTopic: topic });
-  },
-
-  startGeneration: () => {
-    store.setState({
-      generationStatus: 'generating',
-      generationProgress: {
-        stage: 'initializing',
-        progress: 0,
-        message: 'Starting generation...',
-        startedAt: Date.now(),
-      },
-      generationError: null,
-      currentContract: null,
-    });
-  },
-
-  updateProgress: (progress) => {
-    store.setState({ generationProgress: progress });
-  },
-
-  completeGeneration: (contract) => {
-    const state = store.getState();
-    const historyEntry: GenerationHistory = {
-      id: `gen-${Date.now()}`,
-      topic: state.currentTopic,
-      status: 'success',
-      contract,
-      createdAt: state.generationProgress?.startedAt || Date.now(),
-      completedAt: Date.now(),
-      config: {
-        provider: state.provider,
-        model: state.model,
-      },
-    };
-
-    store.setState({
-      generationStatus: 'success',
-      currentContract: contract,
-      generationProgress: {
-        ...state.generationProgress!,
-        stage: 'complete',
-        progress: 100,
-        message: 'Generation complete!',
-        completedAt: Date.now(),
-      },
-      history: [historyEntry, ...state.history].slice(0, 50),
-    });
-  },
-
-  failGeneration: (error) => {
-    store.setState({
-      generationStatus: 'error',
-      generationError: error,
-      generationProgress: null,
-    });
-  },
-
-  resetGeneration: () => {
-    store.setState({
-      generationStatus: 'idle',
-      generationProgress: null,
-      currentContract: null,
-      generationError: null,
-    });
-  },
-
-  // History
-  addToHistory: (entry) => {
-    store.setState((state) => ({
-      history: [entry, ...state.history].slice(0, 50),
-    }));
-  },
-
-  clearHistory: () => {
-    store.setState({ history: [] });
-  },
-
-  removeFromHistory: (id) => {
-    store.setState((state) => ({
-      history: state.history.filter((h) => h.id !== id),
-    }));
-  },
-
-  // UI
-  setActiveTab: (tab) => {
-    store.setState({ activeTab: tab });
-  },
-
-  toggleSidebar: () => {
-    store.setState((state) => ({ sidebarOpen: !state.sidebarOpen }));
-  },
-
-  setTheme: (theme) => {
-    store.setState({ theme });
-    document.documentElement.setAttribute('data-theme', theme);
-  },
-
-  // Config
-  setProvider: (provider) => {
-    store.setState({ provider });
-  },
-
-  setModel: (model) => {
-    store.setState({ model });
-  },
-
-  setTemperature: (temp) => {
-    store.setState({ temperature: Math.max(0, Math.min(2, temp)) });
-  },
-
-  // WordPress
-  setWpConfig: (config) => {
-    store.setState((state) => ({
-      wpConfig: { ...state.wpConfig, ...config },
-    }));
-  },
-
-  // Persistence
-  hydrate: () => {
-    try {
-      const saved = localStorage.getItem('wp-optimizer-state');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        store.setState({
-          apiKeys: parsed.apiKeys || initialState.apiKeys,
-          theme: parsed.theme || 'system',
-          provider: parsed.provider || 'google',
-          model: parsed.model || 'gemini-2.5-flash-preview-05-20',
-          temperature: parsed.temperature ?? 0.7,
-          wpConfig: parsed.wpConfig || initialState.wpConfig,
-          history: parsed.history || [],
-        });
-      }
-    } catch (e) {
-      console.error('[Store] Failed to hydrate:', e);
-    }
-  },
-
-  persist: () => {
-    try {
-      const state = store.getState();
-      const toSave = {
-        apiKeys: state.apiKeys,
-        theme: state.theme,
-        provider: state.provider,
-        model: state.model,
-        temperature: state.temperature,
-        wpConfig: state.wpConfig,
-        history: state.history.slice(0, 20),
-      };
-      localStorage.setItem('wp-optimizer-state', JSON.stringify(toSave));
-    } catch (e) {
-      console.error('[Store] Failed to persist:', e);
-    }
-  },
-};
-
-// ============================================================================
-// Hooks & Selectors
-// ============================================================================
-
-export function useStore<T>(selector: Selector<T>): T {
-  return selector(store.getState());
-}
-
-export function subscribe(listener: Listener): () => void {
-  return store.subscribe(listener);
-}
-
-export function getState(): AppState {
-  return store.getState();
-}
-
-// Computed selectors
-export const selectors = {
-  isGenerating: (state: AppState) => state.generationStatus === 'generating',
-  hasApiKey: (provider: string) => (state: AppState) => !!state.apiKeys[provider as keyof APIKeyConfig],
-  progressPercent: (state: AppState) => state.generationProgress?.progress ?? 0,
-  recentHistory: (limit = 5) => (state: AppState) => state.history.slice(0, limit),
-  wordCount: (state: AppState) => state.currentContract?.wordCount ?? 0,
-};
-
-// ============================================================================
-// Exports
-// ============================================================================
-
-export { store };
-export default { store, actions, selectors, useStore, subscribe, getState };
+          // Utility Actions
+          resetStore: () => set({
+            siteContext: DEFAULT_SITE_CONTEXT,
+            optimizationOptions: DEFAULT_OPTIMIZATION_OPTIONS,
+            contentStrategy: DEFAULT_CONTENT_STRATEGY,
+            pageQueue: [],
+            activityLog: [],
+            apiKeys: {},
+            isProcessing: false
+          }),
+          exportState: () => JSON.stringify(get()),
+          importState: (stateJson) => set(JSON.parse(stateJson))
+        }))
+      ),
+      { name: 'wp-optimizer-pro-storage' }
+    )
+  )
+);
