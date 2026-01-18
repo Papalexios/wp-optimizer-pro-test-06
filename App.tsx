@@ -384,10 +384,17 @@ export default function App() {
             provider,
             model,
             apiKeys: {
-        openrouter: apiKeys.openrouter || '',        openrouterModel: apiKeys.openrouterModel || '',                openai: apiKeys.openai,
-                anthropic: apiKeys.anthropic,
+                google: apiKeys.google || '',
+                        openrouter: apiKeys.openrouter || '',
+                
+        openrouterModel: apiKeys.openrouterModel || '',
+                        openai: apiKeys.openai,
+                
+        anthropic: apiKeys.anthropic,
+                
                 groq: apiKeys.groq,
-        groqModel: apiKeys.groqModel || '',        serper: apiKeys.serper || '', // CRITICAL: Pass Serper key!            },
+                        groqModel: apiKeys.groqModel || '',
+                        serper: apiKeys.serper || '', // CRITICAL: Pass Serper key!
             internalLinks: internalLinks.length > 0 ? internalLinks : undefined,
         };
         
