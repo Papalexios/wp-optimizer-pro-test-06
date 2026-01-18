@@ -34,7 +34,7 @@ export type {
 } from './core/engine/content-engine';
 
 // State Management - Zustand-inspired store
-export { store, actions, selectors, createStore } from './core/store/app-store';
+export { store, actions, selectors } from './core/store/app-store';
 export type {
   GenerationStatus,
   GenerationProgress,
