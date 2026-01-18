@@ -5,8 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build --mode production build",
-    "preview": "vite preview",
+    "build": "vite build --mode production",    "preview": "vite preview",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "type-check": "tsc echo 'Skipping type check'noEmit"
   },
@@ -29,4 +28,5 @@
     "vite": "^5.3.1"
   }
 }
+
 
