@@ -24,6 +24,7 @@ export default defineConfig({
         sourcemap: true,
         minify: 'esbuild',
         rollupOptions: {
+                    input: 'index.html',
             output: {
                 manualChunks: {
                     'react-vendor': ['react', 'react-dom'],
@@ -51,5 +52,6 @@ export default defineConfig({
         logOverride: { 'this-is-undefined-in-esm': 'silent' },
     },
 });
+
 
 
